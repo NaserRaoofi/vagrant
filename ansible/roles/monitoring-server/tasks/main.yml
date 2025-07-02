@@ -1,0 +1,120 @@
+---
+# Install Prometheus
+- name: Create prometheus user and group
+  user:
+    name: prometheus
+    system: true
+    shell: /bin/false
+    home: /var/lib/prometheus
+    create_home: true
+
+- name: Create prometheus directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: prometheus
+    group: prometheus
+    mode: '0755'
+  loop:
+    - /etc/prometheus
+    - /var/lib/prometheus
+
+- name: Download and install Prometheus
+  unarchive:
+    src: "https://github.com/prometheus/prometheus/releases/download/v{{ prometheus_version }}/prometheus-{{ prometheus_version }}.linux-amd64.tar.gz"
+    dest: /tmp
+    remote_src: true
+    creates: "/tmp/prometheus-{{ prometheus_version }}.linux-amd64"
+
+- name: Copy Prometheus binaries
+  copy:
+    src: "/tmp/prometheus-{{ prometheus_version }}.linux-amd64/{{ item }}"
+    dest: "/usr/local/bin/{{ item }}"
+    mode: '0755'
+    owner: prometheus
+    group: prometheus
+    remote_src: true
+  loop:
+    - prometheus
+    - promtool
+
+- name: Copy Prometheus console files
+  copy:
+    src: "/tmp/prometheus-{{ prometheus_version }}.linux-amd64/{{ item }}"
+    dest: "/etc/prometheus/{{ item }}"
+    owner: prometheus
+    group: prometheus
+    remote_src: true
+  loop:
+    - consoles
+    - console_libraries
+
+- name: Create Prometheus configuration
+  template:
+    src: prometheus.yml.j2
+    dest: /etc/prometheus/prometheus.yml
+    owner: prometheus
+    group: prometheus
+    mode: '0644'
+  notify: restart prometheus
+
+- name: Create Prometheus systemd service
+  template:
+    src: prometheus.service.j2
+    dest: /etc/systemd/system/prometheus.service
+  notify:
+    - reload systemd
+    - restart prometheus
+
+- name: Start and enable Prometheus
+  systemd:
+    name: prometheus
+    state: started
+    enabled: true
+    daemon_reload: true
+
+# Install Grafana
+- name: Add Grafana GPG key
+  apt_key:
+    url: https://packages.grafana.com/gpg.key
+    state: present
+
+- name: Add Grafana repository
+  apt_repository:
+    repo: "deb https://packages.grafana.com/oss/deb stable main"
+    state: present
+
+- name: Install Grafana
+  apt:
+    name: grafana
+    state: present
+    update_cache: true
+
+- name: Configure Grafana
+  template:
+    src: grafana.ini.j2
+    dest: /etc/grafana/grafana.ini
+    backup: true
+  notify: restart grafana
+
+- name: Create Grafana dashboards directory
+  file:
+    path: /var/lib/grafana/dashboards
+    state: directory
+    owner: grafana
+    group: grafana
+    mode: '0755'
+
+- name: Copy Grafana dashboard
+  template:
+    src: infrastructure-dashboard.json.j2
+    dest: /var/lib/grafana/dashboards/infrastructure.json
+    owner: grafana
+    group: grafana
+    mode: '0644'
+
+- name: Start and enable Grafana
+  systemd:
+    name: grafana-server
+    state: started
+    enabled: true

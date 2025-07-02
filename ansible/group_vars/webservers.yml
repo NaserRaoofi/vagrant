@@ -1,0 +1,27 @@
+---
+# Web server specific variables
+web_packages:
+  - apache2
+  - php
+  - libapache2-mod-php
+  - php-mysql
+  - php-curl
+  - php-json
+  - php-gd
+  - php-mbstring
+  - php-xml
+
+web_document_root: /var/www/html
+web_service_name: apache2
+web_port: 80
+
+# Apache modules to enable
+apache_modules:
+  - rewrite
+  - headers
+  - ssl
+
+# PHP settings
+php_memory_limit: "256M"
+php_max_execution_time: 300
+php_upload_max_filesize: "10M"

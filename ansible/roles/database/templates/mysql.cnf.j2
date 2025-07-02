@@ -1,0 +1,58 @@
+[mysqld]
+pid-file        = /var/run/mysqld/mysqld.pid
+socket          = /var/run/mysqld/mysqld.sock
+datadir         = /var/lib/mysql
+log-error       = /var/log/mysql/error.log
+
+# Network settings
+bind-address    = {{ mysql_bind_address }}
+mysqlx-bind-address = {{ mysql_bind_address }}
+port            = 3306
+
+# Performance settings
+max_connections = {{ mysql_max_connections }}
+innodb_buffer_pool_size = {{ mysql_innodb_buffer_pool_size }}
+innodb_log_file_size = 64M
+innodb_log_buffer_size = 16M
+innodb_flush_log_at_trx_commit = 2
+
+# Query cache (if enabled)
+query_cache_type = 1
+query_cache_size = 32M
+query_cache_limit = 2M
+
+# Slow query log
+slow_query_log = 1
+slow_query_log_file = /var/log/mysql/slow.log
+long_query_time = 2
+
+# Binary logging for replication
+server-id = 1
+log-bin = mysql-bin
+binlog_format = ROW
+expire_logs_days = 7
+
+# Security settings
+local-infile = 0
+skip-show-database
+
+# Character set
+character-set-server = utf8mb4
+collation-server = utf8mb4_unicode_ci
+
+# Connection settings
+max_connect_errors = 100
+connect_timeout = 10
+wait_timeout = 28800
+interactive_timeout = 28800
+
+[mysql]
+default-character-set = utf8mb4
+
+[mysqldump]
+quick
+quote-names
+max_allowed_packet = 16M
+
+[isamchk]
+key_buffer = 16M

@@ -1,0 +1,77 @@
+---
+# Common tasks for all servers (minimal setup for testing)
+- name: Verify basic connectivity
+  ping:
+
+- name: Check system information
+  debug:
+    msg: "Connected to {{ inventory_hostname }} ({{ ansible_host }})"
+
+- name: Ensure basic directories exist
+  file:
+    path: "{{ item }}"
+    state: directory
+    mode: '0755'
+  loop:
+    - /opt/app
+    - /var/log/app
+
+- name: Create basic system info file
+  copy:
+    dest: /etc/system-role
+    content: |
+      # System role configured by Ansible
+      hostname={{ inventory_hostname }}
+      role={{ group_names | join(',') }}
+      configured={{ ansible_date_time.iso8601 }}
+    mode: '0644'
+
+- name: Set basic hostname
+  hostname:
+    name: "{{ inventory_hostname.split('.')[0] }}"
+  ignore_errors: true
+
+- name: Set timezone
+  timezone:
+    name: "{{ timezone }}"
+
+- name: Configure DNS
+  template:
+    src: resolv.conf.j2
+    dest: /etc/resolv.conf
+    backup: true
+  notify: restart networking
+
+- name: Create application group
+  group:
+    name: appgroup
+    state: present
+
+- name: Create application user
+  user:
+    name: appuser
+    group: appgroup
+    shell: /bin/bash
+    create_home: true
+    state: present
+
+- name: Configure SSH security (disable password auth)
+  lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: '^#?PasswordAuthentication'
+    line: 'PasswordAuthentication no'
+    backup: true
+  notify: restart ssh
+
+- name: Ensure firewall is disabled (lab environment)
+  systemd:
+    name: ufw
+    state: stopped
+    enabled: false
+  ignore_errors: true
+
+- name: Create log directory
+  file:
+    path: /var/log/ansible
+    state: directory
+    mode: '0755'

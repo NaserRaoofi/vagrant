@@ -1,0 +1,95 @@
+---
+- name: Create prometheus user
+  user:
+    name: prometheus
+    system: true
+    shell: /bin/false
+    home: /var/lib/prometheus
+    create_home: false
+
+- name: Download and install node_exporter
+  unarchive:
+    src: "https://github.com/prometheus/node_exporter/releases/download/v1.6.1/node_exporter-1.6.1.linux-amd64.tar.gz"
+    dest: /tmp
+    remote_src: true
+    creates: /tmp/node_exporter-1.6.1.linux-amd64
+
+- name: Copy node_exporter binary
+  copy:
+    src: /tmp/node_exporter-1.6.1.linux-amd64/node_exporter
+    dest: /usr/local/bin/node_exporter
+    mode: '0755'
+    owner: prometheus
+    group: prometheus
+    remote_src: true
+
+- name: Create node_exporter systemd service
+  template:
+    src: node_exporter.service.j2
+    dest: /etc/systemd/system/node_exporter.service
+  notify:
+    - reload systemd
+    - restart node_exporter
+
+- name: Start and enable node_exporter
+  systemd:
+    name: node_exporter
+    state: started
+    enabled: true
+    daemon_reload: true
+
+# Install mysqld_exporter on database servers
+- name: Download and install mysqld_exporter
+  unarchive:
+    src: "https://github.com/prometheus/mysqld_exporter/releases/download/v0.15.0/mysqld_exporter-0.15.0.linux-amd64.tar.gz"
+    dest: /tmp
+    remote_src: true
+    creates: /tmp/mysqld_exporter-0.15.0.linux-amd64
+  when: "'databases' in group_names"
+
+- name: Copy mysqld_exporter binary
+  copy:
+    src: /tmp/mysqld_exporter-0.15.0.linux-amd64/mysqld_exporter
+    dest: /usr/local/bin/mysqld_exporter
+    mode: '0755'
+    owner: prometheus
+    group: prometheus
+    remote_src: true
+  when: "'databases' in group_names"
+
+- name: Create mysqld_exporter configuration
+  template:
+    src: mysqld_exporter.cnf.j2
+    dest: /etc/mysqld_exporter.cnf
+    mode: '0600'
+    owner: prometheus
+    group: prometheus
+  when: "'databases' in group_names"
+
+- name: Create MySQL user for monitoring
+  mysql_user:
+    name: exporter
+    password: exporterpass
+    priv: "*.*:PROCESS,REPLICATION CLIENT,SELECT"
+    host: localhost
+    state: present
+    login_user: root
+    login_password: "{{ mysql_root_password }}"
+  when: "'databases' in group_names"
+
+- name: Create mysqld_exporter systemd service
+  template:
+    src: mysqld_exporter.service.j2
+    dest: /etc/systemd/system/mysqld_exporter.service
+  notify:
+    - reload systemd
+    - restart mysqld_exporter
+  when: "'databases' in group_names"
+
+- name: Start and enable mysqld_exporter
+  systemd:
+    name: mysqld_exporter
+    state: started
+    enabled: true
+    daemon_reload: true
+  when: "'databases' in group_names"

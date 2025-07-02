@@ -1,0 +1,8 @@
+---
+# Test playbook for common role only
+- name: Test Common Role
+  hosts: all
+  become: true
+  gather_facts: true
+  roles:
+    - common

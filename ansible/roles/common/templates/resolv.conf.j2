@@ -1,0 +1,8 @@
+# DNS configuration
+{% for dns in dns_servers %}
+nameserver {{ dns }}
+{% endfor %}
+
+# Domain settings
+search local
+domain local

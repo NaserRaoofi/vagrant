@@ -1,0 +1,142 @@
+{
+  "dashboard": {
+    "id": null,
+    "title": "Infrastructure Overview",
+    "tags": ["infrastructure", "vagrant"],
+    "timezone": "browser",
+    "panels": [
+      {
+        "id": 1,
+        "title": "System Load Average",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "node_load1",
+            "legendFormat": "{{instance}} - 1m load",
+            "refId": "A"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 6, "x": 0, "y": 0},
+        "fieldConfig": {
+          "defaults": {
+            "color": {"mode": "palette-classic"},
+            "thresholds": {
+              "steps": [
+                {"color": "green", "value": null},
+                {"color": "yellow", "value": 1},
+                {"color": "red", "value": 2}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 2,
+        "title": "Memory Usage %",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "100 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes * 100)",
+            "legendFormat": "{{instance}}",
+            "refId": "A"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 6, "x": 6, "y": 0},
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "thresholds": {
+              "steps": [
+                {"color": "green", "value": null},
+                {"color": "yellow", "value": 70},
+                {"color": "red", "value": 90}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 3,
+        "title": "Disk Usage %",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "100 - (node_filesystem_avail_bytes{fstype!=\"tmpfs\"} / node_filesystem_size_bytes{fstype!=\"tmpfs\"} * 100)",
+            "legendFormat": "{{instance}} - {{mountpoint}}",
+            "refId": "A"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 6, "x": 12, "y": 0},
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "thresholds": {
+              "steps": [
+                {"color": "green", "value": null},
+                {"color": "yellow", "value": 80},
+                {"color": "red", "value": 95}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 4,
+        "title": "Network Traffic",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "rate(node_network_receive_bytes_total{device!=\"lo\"}[5m]) * 8",
+            "legendFormat": "{{instance}} - {{device}} RX",
+            "refId": "A"
+          },
+          {
+            "expr": "rate(node_network_transmit_bytes_total{device!=\"lo\"}[5m]) * 8",
+            "legendFormat": "{{instance}} - {{device}} TX",
+            "refId": "B"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 6, "x": 18, "y": 0},
+        "fieldConfig": {
+          "defaults": {
+            "unit": "bps"
+          }
+        }
+      },
+      {
+        "id": 5,
+        "title": "MySQL Connections",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "mysql_global_status_threads_connected",
+            "legendFormat": "Connected",
+            "refId": "A"
+          },
+          {
+            "expr": "mysql_global_status_max_used_connections",
+            "legendFormat": "Max Used",
+            "refId": "B"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8}
+      },
+      {
+        "id": 6,
+        "title": "HTTP Requests (Load Balancer)",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "rate(nginx_http_requests_total[5m])",
+            "legendFormat": "{{server}} - {{status}}",
+            "refId": "A"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8}
+      }
+    ],
+    "time": {"from": "now-1h", "to": "now"},
+    "refresh": "10s",
+    "version": 1
+  }
+}

@@ -1,0 +1,28 @@
+---
+# Monitoring variables
+prometheus_version: "2.47.0"
+grafana_admin_user: admin
+grafana_admin_password: admin123
+
+# Prometheus targets
+prometheus_targets:
+  prometheus:
+    - localhost:9090
+  node_exporter:
+    - 192.168.56.10:9100  # lb
+    - 192.168.56.11:9100  # web1
+    - 192.168.56.12:9100  # web2
+    - 192.168.56.13:9100  # db
+    - 192.168.56.14:9100  # monitor
+  mysql_exporter:
+    - 192.168.56.13:9104
+  nginx_exporter:
+    - 192.168.56.10:9113
+
+# Data retention
+prometheus_retention: "15d"
+prometheus_storage_path: /var/lib/prometheus
+
+# Alerting (for future expansion)
+alertmanager_enabled: false
+alert_rules_enabled: true

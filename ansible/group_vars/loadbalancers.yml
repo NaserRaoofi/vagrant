@@ -1,0 +1,24 @@
+---
+# Load balancer variables
+nginx_worker_processes: auto
+nginx_worker_connections: 1024
+nginx_keepalive_timeout: 65
+
+# Backend servers for load balancing
+backend_servers:
+  - server: 192.168.56.11:80
+    weight: 1
+    max_fails: 3
+    fail_timeout: 30s
+  - server: 192.168.56.12:80
+    weight: 1
+    max_fails: 3
+    fail_timeout: 30s
+
+# Load balancing method
+lb_method: "round_robin"  # Options: round_robin, least_conn, ip_hash
+
+# SSL settings (for future use)
+ssl_enabled: false
+ssl_certificate_path: /etc/ssl/certs/nginx.crt
+ssl_certificate_key_path: /etc/ssl/private/nginx.key

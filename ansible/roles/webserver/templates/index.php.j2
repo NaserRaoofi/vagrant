@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Web Server Status - {{ ansible_hostname }}</title>
+    <style>
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            margin: 40px; 
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        .container {
+            background: rgba(255,255,255,0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+        }
+        .server-info { 
+            background: rgba(255,255,255,0.1); 
+            padding: 20px; 
+            border-radius: 8px; 
+            margin: 20px 0;
+        }
+        .status { color: #4ade80; font-weight: bold; }
+        .error { color: #f87171; }
+        .success { color: #4ade80; }
+        h1 { text-align: center; margin-bottom: 30px; }
+        .metric { 
+            display: inline-block; 
+            margin: 10px 15px; 
+            padding: 10px; 
+            background: rgba(255,255,255,0.1); 
+            border-radius: 5px; 
+        }
+    </style>
+    <meta http-equiv="refresh" content="30">
+</head>
+<body>
+    <div class="container">
+        <h1>🌐 Web Server Status</h1>
+        
+        <div class="server-info">
+            <h2>📊 Server Information</h2>
+            <div class="metric"><strong>Hostname:</strong> <?php echo gethostname(); ?></div>
+            <div class="metric"><strong>Server IP:</strong> <?php echo $_SERVER['SERVER_ADDR'] ?? 'N/A'; ?></div>
+            <div class="metric"><strong>Client IP:</strong> <?php echo $_SERVER['REMOTE_ADDR'] ?? 'N/A'; ?></div>
+            <div class="metric"><strong>Server ID:</strong> <?php 
+                if (file_exists('/var/www/html/server_id.txt')) {
+                    echo file_get_contents('/var/www/html/server_id.txt');
+                } else {
+                    echo 'Unknown';
+                }
+            ?></div>
+            <div class="metric"><strong>Timestamp:</strong> <?php echo date('Y-m-d H:i:s T'); ?></div>
+            <div class="metric"><strong>Status:</strong> <span class="status">✅ ONLINE</span></div>
+            <div class="metric"><strong>Load Avg:</strong> <?php echo sys_getloadavg()[0] ?? 'N/A'; ?></div>
+        </div>
+        
+        <div class="server-info">
+            <h3>🚀 Application Info</h3>
+            <div class="metric">PHP Version: <?php echo phpversion(); ?></div>
+            <div class="metric">Web Server: <?php echo $_SERVER['SERVER_SOFTWARE'] ?? 'Apache'; ?></div>
+            <div class="metric">Request Method: <?php echo $_SERVER['REQUEST_METHOD'] ?? 'GET'; ?></div>
+            <div class="metric">User Agent: <?php echo substr($_SERVER['HTTP_USER_AGENT'] ?? 'Unknown', 0, 50) . '...'; ?></div>
+        </div>
+        
+        <div class="server-info">
+            <h3>🛢️ Database Connection Test</h3>
+            <?php
+            try {
+                $pdo = new PDO('mysql:host=192.168.56.13;dbname=testdb', 'appuser', 'apppass123', [
+                    PDO::ATTR_TIMEOUT => 5,
+                    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION
+                ]);
+                
+                // Test query
+                $stmt = $pdo->query('SELECT COUNT(*) as user_count FROM users');
+                $result = $stmt->fetch(PDO::FETCH_ASSOC);
+                
+                echo '<p class="success">✅ Database connection successful</p>';
+                echo '<p>Users in database: ' . $result['user_count'] . '</p>';
+                
+                // Show recent users
+                $stmt = $pdo->query('SELECT username, email, created_at FROM users ORDER BY created_at DESC LIMIT 3');
+                echo '<h4>Recent Users:</h4><ul>';
+                while ($user = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                    echo '<li>' . htmlspecialchars($user['username']) . ' (' . htmlspecialchars($user['email']) . ') - ' . $user['created_at'] . '</li>';
+                }
+                echo '</ul>';
+                
+            } catch (PDOException $e) {
+                echo '<p class="error">❌ Database connection failed: ' . htmlspecialchars($e->getMessage()) . '</p>';
+            }
+            ?>
+        </div>
+
+        <div class="server-info">
+            <h3>🔧 System Health</h3>
+            <div class="metric">Disk Usage: <?php 
+                $free = disk_free_space('/');
+                $total = disk_total_space('/');
+                $used = $total - $free;
+                $percent = round(($used / $total) * 100, 2);
+                echo $percent . '%';
+            ?></div>
+            <div class="metric">Memory: <?php 
+                $memory = file_get_contents('/proc/meminfo');
+                preg_match('/MemTotal:\s+(\d+)/', $memory, $total);
+                preg_match('/MemAvailable:\s+(\d+)/', $memory, $available);
+                if ($total && $available) {
+                    $percent = round((($total[1] - $available[1]) / $total[1]) * 100, 2);
+                    echo $percent . '%';
+                } else {
+                    echo 'N/A';
+                }
+            ?></div>
+            <div class="metric">Uptime: <?php 
+                $uptime = file_get_contents('/proc/uptime');
+                $uptime = explode(' ', $uptime)[0];
+                $days = floor($uptime / 86400);
+                $hours = floor(($uptime % 86400) / 3600);
+                $minutes = floor(($uptime % 3600) / 60);
+                echo "{$days}d {$hours}h {$minutes}m";
+            ?></div>
+        </div>
+
+        <div class="server-info">
+            <h3>🌐 Load Balancer Test</h3>
+            <p>Refresh this page multiple times to see load balancing in action!</p>
+            <p><small>This page auto-refreshes every 30 seconds</small></p>
+        </div>
+    </div>
+</body>
+</html>

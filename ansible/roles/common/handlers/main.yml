@@ -1,0 +1,10 @@
+---
+- name: restart networking
+  systemd:
+    name: systemd-networkd
+    state: restarted
+
+- name: restart ssh
+  systemd:
+    name: ssh
+    state: restarted

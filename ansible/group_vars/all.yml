@@ -1,0 +1,26 @@
+---
+# Global variables for all hosts
+timezone: "UTC"
+
+# Common packages
+common_packages:
+  - curl
+  - wget
+  - htop
+  - vim
+  - git
+  - unzip
+  - software-properties-common
+
+# User configuration
+app_user: appuser
+app_group: appgroup
+
+# Security settings
+ssh_password_authentication: false
+ssh_permit_root_login: false
+
+# Network settings
+dns_servers:
+  - 8.8.8.8
+  - 8.8.4.4

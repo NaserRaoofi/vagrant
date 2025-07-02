@@ -1,0 +1,112 @@
+---
+- name: Install MySQL server and dependencies
+  apt:
+    name:
+      - mysql-server
+      - python3-pymysql
+      - python3-mysqldb
+    state: present
+
+- name: Start and enable MySQL service
+  systemd:
+    name: mysql
+    state: started
+    enabled: true
+
+- name: Set MySQL root password
+  mysql_user:
+    name: root
+    password: "{{ mysql_root_password }}"
+    login_unix_socket: /var/run/mysqld/mysqld.sock
+    state: present
+
+- name: Remove anonymous MySQL users
+  mysql_user:
+    name: ""
+    host_all: true
+    state: absent
+    login_user: root
+    login_password: "{{ mysql_root_password }}"
+
+- name: Remove MySQL test database
+  mysql_db:
+    name: test
+    state: absent
+    login_user: root
+    login_password: "{{ mysql_root_password }}"
+
+- name: Configure MySQL settings
+  template:
+    src: mysql.cnf.j2
+    dest: /etc/mysql/mysql.conf.d/mysqld.cnf
+    backup: true
+  notify: restart mysql
+
+- name: Create application databases
+  mysql_db:
+    name: "{{ item.name }}"
+    collation: "{{ item.collation | default('utf8_general_ci') }}"
+    encoding: "{{ item.encoding | default('utf8') }}"
+    state: present
+    login_user: root
+    login_password: "{{ mysql_root_password }}"
+  loop: "{{ mysql_databases }}"
+
+- name: Create application users
+  mysql_user:
+    name: "{{ item.name }}"
+    password: "{{ item.password }}"
+    priv: "{{ item.priv }}"
+    host: "{{ item.host | default('localhost') }}"
+    state: present
+    login_user: root
+    login_password: "{{ mysql_root_password }}"
+  loop: "{{ mysql_users }}"
+
+- name: Create sample data
+  mysql_query:
+    login_user: root
+    login_password: "{{ mysql_root_password }}"
+    login_db: testdb
+    query: |
+      CREATE TABLE IF NOT EXISTS users (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          username VARCHAR(50) NOT NULL UNIQUE,
+          email VARCHAR(100) NOT NULL UNIQUE,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          INDEX idx_username (username),
+          INDEX idx_email (email)
+      );
+      
+      INSERT IGNORE INTO users (username, email) VALUES 
+      ('admin', 'admin@example.com'),
+      ('john_doe', 'john@example.com'),
+      ('jane_smith', 'jane@example.com'),
+      ('demo_user', 'demo@example.com'),
+      ('test_user', 'test@example.com');
+
+- name: Create backup directory
+  file:
+    path: "{{ mysql_backup_path }}"
+    state: directory
+    owner: mysql
+    group: mysql
+    mode: '0750'
+  when: mysql_backup_enabled
+
+- name: Create backup script
+  template:
+    src: mysql_backup.sh.j2
+    dest: /usr/local/bin/mysql_backup.sh
+    mode: '0755'
+  when: mysql_backup_enabled
+
+- name: Schedule database backups
+  cron:
+    name: "MySQL backup"
+    minute: "0"
+    hour: "2"
+    job: "/usr/local/bin/mysql_backup.sh"
+    user: root
+  when: mysql_backup_enabled

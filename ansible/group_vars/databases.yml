@@ -1,0 +1,22 @@
+---
+# Database server variables
+mysql_root_password: "rootpass123"
+mysql_databases:
+  - name: testdb
+    collation: utf8_general_ci
+    encoding: utf8
+
+mysql_users:
+  - name: appuser
+    password: apppass123
+    priv: "testdb.*:ALL"
+    host: "%"
+
+mysql_bind_address: "0.0.0.0"
+mysql_max_connections: 100
+mysql_innodb_buffer_pool_size: "256M"
+
+# Backup settings
+mysql_backup_enabled: true
+mysql_backup_path: /var/backups/mysql
+mysql_backup_retention_days: 7

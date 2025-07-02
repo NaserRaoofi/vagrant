@@ -1,0 +1,32 @@
+---
+# Main playbook for infrastructure setup
+- name: Setup Load Balancers
+  hosts: loadbalancers
+  become: true
+  roles:
+    - common
+    - loadbalancer
+
+- name: Setup Web Servers
+  hosts: webservers
+  become: true
+  roles:
+    - common
+    - webserver
+    - monitoring-node
+
+- name: Setup Database Servers
+  hosts: databases
+  become: true
+  roles:
+    - common
+    - database
+    - monitoring-node
+
+- name: Setup Monitoring Servers
+  hosts: monitoring
+  become: true
+  roles:
+    - common
+    - monitoring-server
+    - monitoring-node

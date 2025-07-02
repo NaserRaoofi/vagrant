@@ -1,0 +1,66 @@
+---
+- name: Install web server packages
+  apt:
+    name: "{{ web_packages }}"
+    state: present
+
+- name: Enable Apache modules
+  apache2_module:
+    name: "{{ item }}"
+    state: present
+  loop: "{{ apache_modules }}"
+  notify: restart apache
+
+- name: Configure PHP settings
+  lineinfile:
+    path: /etc/php/8.1/apache2/php.ini
+    regexp: "{{ item.regexp }}"
+    line: "{{ item.line }}"
+    backup: true
+  loop:
+    - { regexp: '^memory_limit', line: 'memory_limit = {{ php_memory_limit }}' }
+    - { regexp: '^max_execution_time', line: 'max_execution_time = {{ php_max_execution_time }}' }
+    - { regexp: '^upload_max_filesize', line: 'upload_max_filesize = {{ php_upload_max_filesize }}' }
+  notify: restart apache
+
+- name: Create web application
+  template:
+    src: index.php.j2
+    dest: "{{ web_document_root }}/index.php"
+    owner: www-data
+    group: www-data
+    mode: '0644'
+
+- name: Create server identification file
+  copy:
+    content: "{{ server_id | default('UNKNOWN') }}"
+    dest: "{{ web_document_root }}/server_id.txt"
+    owner: www-data
+    group: www-data
+    mode: '0644'
+
+- name: Remove default Apache index
+  file:
+    path: "{{ web_document_root }}/index.html"
+    state: absent
+
+- name: Configure Apache virtual host
+  template:
+    src: vhost.conf.j2
+    dest: /etc/apache2/sites-available/000-default.conf
+    backup: true
+  notify: restart apache
+
+- name: Set proper permissions for web directory
+  file:
+    path: "{{ web_document_root }}"
+    owner: www-data
+    group: www-data
+    mode: '0755'
+    recurse: true
+
+- name: Start and enable Apache
+  systemd:
+    name: "{{ web_service_name }}"
+    state: started
+    enabled: true
