@@ -48,14 +48,15 @@ This project provides a complete **production-ready infrastructure** with 5 Ubun
 
 ### **Start Infrastructure**
 ```bash
-# Clone and start
+# Clone and start (includes automatic Ansible provisioning)
 git clone <your-repo>
 cd vagrant-secure/
-vagrant up
+vagrant up                   # Starts VMs + runs Ansible automatically
 
 # Check status
 ./manage.sh status
-./manage.sh check
+./manage.sh endpoints        # Test all services
+./manage.sh db-status        # Verify database connectivity
 ```
 
 ### **Access Services**
@@ -92,6 +93,8 @@ mysql -h localhost -P 3306 -u root -p  # password: rootpass123
 - **Minimal Footprint**: VMs only run necessary services
 - **Real-World Skills**: Learn patterns used in production
 - **Production Ready**: Same architecture scales to thousands of servers
+- **Idempotent Provisioning**: Safe to re-run, only applies needed changes
+- **Automated Setup**: Complete infrastructure with single `vagrant up` command
 
 ## 🔒 **Security Configuration**
 
@@ -142,24 +145,26 @@ vagrant status                # Check VM status
 
 ### **Using manage.sh Script**
 ```bash
-# System status
-./manage.sh status            # VM status
-./manage.sh check            # Health checks
-./manage.sh validate         # Full validation
+# System status and health
+./manage.sh status           # Show VM status
+./manage.sh endpoints        # Test all service endpoints
+./manage.sh db-status        # Check database connectivity
 
-# SSH access  
+# SSH access (multiple methods)
 ./manage.sh ssh lb           # SSH to load balancer
 ./manage.sh ssh web1         # SSH to web server 1
 ./manage.sh ssh db           # SSH to database
+./manage.sh ssh monitor      # SSH to monitoring server
 
-# Service management
-./manage.sh logs web1 apache2    # View web server logs
-./manage.sh logs lb nginx        # View load balancer logs
-./manage.sh logs db mysql        # View database logs
+# Service logs
+./manage.sh logs lb          # Load balancer logs
+./manage.sh logs web1        # Web server 1 logs
+./manage.sh logs web2        # Web server 2 logs
+./manage.sh logs db          # Database logs
+./manage.sh logs monitor     # Monitoring logs
 
-# Testing
-./manage.sh endpoints        # Test all service endpoints
-./manage.sh ansible         # Run Ansible manually
+# Manual provisioning
+ansible-playbook -i ansible/inventory.ini ansible/site.yml
 ```
 
 ## 🌐 **Network Architecture**
@@ -225,6 +230,14 @@ ansible/
 └── site.yml            # Main playbook
 ```
 
+### **Professional Ansible Features**
+✅ **Idempotent**: Safe to run multiple times  
+✅ **Error Handling**: Robust failure recovery  
+✅ **Skip Logic**: Only installs missing components  
+✅ **Service Checks**: Validates service states  
+✅ **Package Management**: Handles apt updates properly  
+✅ **Template Engine**: Dynamic configurations  
+
 ### **Running Ansible Manually**
 ```bash
 # Test connectivity
@@ -246,13 +259,15 @@ ansible-playbook -i ansible/inventory.ini ansible/site.yml -v
 ```bash
 # Start workday
 vagrant up
-./manage.sh check
+./manage.sh status
+./manage.sh endpoints
 
 # During development
 ./manage.sh ssh web1           # Modify application code
 ./manage.sh ssh db             # Database changes  
 ./manage.sh endpoints          # Test connectivity
-./manage.sh logs web1 apache2  # Debug issues
+./manage.sh logs web1          # Debug issues
+./manage.sh db-status          # Check database
 
 # End workday
 vagrant halt                   # Save resources
@@ -276,16 +291,20 @@ mysql -h localhost -P 3306 -u app_user -p myapp_db
 
 ### **Monitoring & Debugging**
 ```bash
-# View real-time logs
-./manage.sh logs lb nginx
-./manage.sh logs web1 apache2
-./manage.sh logs db mysql
+# View real-time logs via manage.sh
+./manage.sh logs lb
+./manage.sh logs web1
+./manage.sh logs db
+./manage.sh logs monitor
 
-# Check system resources
+# SSH access for detailed debugging
 ./manage.sh ssh monitor
+# Once in VM:
 top
 htop
 df -h
+systemctl status prometheus
+systemctl status grafana-server
 ```
 
 ## 📁 **Filesystem Requirements**
