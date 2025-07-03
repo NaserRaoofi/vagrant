@@ -17,8 +17,8 @@ config.ssh.insert_key = true  # Caused conflicts
 
 **New optimized configuration:**
 ```ruby
-config.ssh.insert_key = false  # Use our own secure key
-config.ssh.private_key_path = File.expand_path("ansible_key", __dir__)
+config.ssh.insert_key = false  # Use default Vagrant insecure key
+# Default Vagrant key is automatically used, no need to specify path
 config.ssh.keep_alive = true
 config.ssh.connect_timeout = 30
 ```

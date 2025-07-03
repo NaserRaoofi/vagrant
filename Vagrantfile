@@ -21,9 +21,9 @@ Vagrant.configure("2") do |config|
   config.vm.box = "ubuntu/jammy64"
   config.vm.box_check_update = false
 
-  # SSH configuration - optimized for speed and security
+  # SSH configuration - using default Vagrant insecure keys
   config.ssh.forward_agent = true
-  config.ssh.insert_key = true   # Let Vagrant manage keys for initial setup
+  config.ssh.insert_key = false   # Use default Vagrant insecure key
   config.ssh.keep_alive = true
   config.ssh.connect_timeout = 60
   config.ssh.shell = "bash -l"
@@ -40,32 +40,15 @@ Vagrant.configure("2") do |config|
     vb.customize ["modifyvm", :id, "--uart2", "off"]
   end
 
-  # One-time setup for SSH keys - only runs if not already configured
+  # One-time setup - simplified for default Vagrant keys
   config.vm.provision "shell", run: "once", inline: <<-SHELL
-    echo "Setting up secure SSH access for Ansible..."
-    
-    # Set up our secure SSH key for Ansible (in addition to Vagrant's key)
-    if [ -f /vagrant/ansible_key.pub ]; then
-      mkdir -p /home/vagrant/.ssh
-      
-      # Add our secure key to authorized_keys (don't replace, append)
-      if ! grep -q "ansible@vagrant-infrastructure" /home/vagrant/.ssh/authorized_keys 2>/dev/null; then
-        cat /vagrant/ansible_key.pub >> /home/vagrant/.ssh/authorized_keys
-      fi
-      
-      # Set proper permissions
-      chmod 700 /home/vagrant/.ssh
-      chmod 600 /home/vagrant/.ssh/authorized_keys
-      chown -R vagrant:vagrant /home/vagrant/.ssh
-      
-      echo "✅ Secure SSH key configured"
-    else
-      echo "❌ SSH key not found at /vagrant/ansible_key.pub"
-    fi
+    echo "Setting up SSH access using default Vagrant insecure keys..."
     
     # Ensure SSH service is running and configured properly
     systemctl enable ssh
     systemctl restart ssh
+    
+    echo "✅ SSH configuration complete - using default Vagrant keys"
   SHELL
 
   # Load Balancer VM
@@ -135,7 +118,7 @@ Vagrant.configure("2") do |config|
     monitor.vm.network "forwarded_port", guest: 3000, host: 3000, auto_correct: true  # Grafana
     monitor.vm.network "forwarded_port", guest: 9090, host: 9090, auto_correct: true  # Prometheus
     
-    # Run Ansible from HOST machine (proper architecture)
+    # Run Ansible from HOST machine using default Vagrant insecure key
     # This runs after ALL VMs are up and provisions each VM with its role
     monitor.vm.provision "ansible", run: "always" do |ansible|
       ansible.playbook = "ansible/site.yml"
@@ -144,8 +127,9 @@ Vagrant.configure("2") do |config|
       ansible.verbose = true
       ansible.host_key_checking = false
       ansible.raw_arguments = ["--timeout=300"]
+      # Using default Vagrant insecure key
       ansible.extra_vars = {
-        ansible_ssh_private_key_file: File.expand_path("ansible_key", __dir__)
+        ansible_ssh_private_key_file: "~/.vagrant.d/insecure_private_key"
       }
     end
   end

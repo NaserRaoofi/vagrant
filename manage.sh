@@ -97,23 +97,23 @@ ssh_to_vm() {
     case "$vm" in
         "lb")
             echo_info "Connecting to Load Balancer..."
-            ssh -i ansible_key vagrant@192.168.56.10
+            ssh -i ~/.vagrant.d/insecure_private_key vagrant@192.168.56.10
             ;;
         "web1")
             echo_info "Connecting to Web Server 1..."
-            ssh -i ansible_key vagrant@192.168.56.11
+            ssh -i ~/.vagrant.d/insecure_private_key vagrant@192.168.56.11
             ;;
         "web2")
             echo_info "Connecting to Web Server 2..."
-            ssh -i ansible_key vagrant@192.168.56.12
+            ssh -i ~/.vagrant.d/insecure_private_key vagrant@192.168.56.12
             ;;
         "db")
             echo_info "Connecting to Database Server..."
-            ssh -i ansible_key vagrant@192.168.56.13
+            ssh -i ~/.vagrant.d/insecure_private_key vagrant@192.168.56.13
             ;;
         "monitor")
             echo_info "Connecting to Monitoring Server..."
-            ssh -i ansible_key vagrant@192.168.56.14
+            ssh -i ~/.vagrant.d/insecure_private_key vagrant@192.168.56.14
             ;;
         *)
             echo_error "Unknown VM: $vm"

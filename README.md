@@ -99,29 +99,30 @@ mysql -h localhost -P 3306 -u root -p  # password: rootpass123
 ## 🔒 **Security Configuration**
 
 ### **SSH Key Management**
-This infrastructure uses **secure, unique SSH keys** instead of Vagrant's default insecure key.
+This infrastructure uses **Vagrant's default insecure keys** for development convenience.
 
-**Key Files:**
-- `ansible_key` - **Private key** (keep secure!)
-- `ansible_key.pub` - **Public key** (distributed to VMs)
+**Key Details:**
+- Uses `~/.vagrant.d/insecure_private_key` - Vagrant's default key
+- Automatically managed by Vagrant
+- Suitable for development environments
 
-**Security Features:**
-✅ **Unique to this project** - No shared/public keys  
-✅ **Ed25519 encryption** - Modern, secure algorithm  
-✅ **Proper permissions** - 600 for private, 644 for public  
-✅ **Centralized control** - Only your machine has private key  
+**Features:**
+✅ **Automatic setup** - No manual key generation needed  
+✅ **Standard Vagrant approach** - Compatible with all Vagrant workflows  
+✅ **Development focused** - Easy setup and management  
+✅ **Centralized control** - Vagrant manages keys automatically  
 
 ### **Manual SSH Access**
 ```bash
-# SSH to any VM using secure key
-ssh -i ansible_key vagrant@192.168.56.10   # Load balancer
-ssh -i ansible_key vagrant@192.168.56.11   # Web server 1
-ssh -i ansible_key vagrant@192.168.56.12   # Web server 2
-ssh -i ansible_key vagrant@192.168.56.13   # Database
-ssh -i ansible_key vagrant@192.168.56.14   # Monitoring
+# SSH to any VM using default Vagrant insecure key
+ssh -i ~/.vagrant.d/insecure_private_key vagrant@192.168.56.10   # Load balancer
+ssh -i ~/.vagrant.d/insecure_private_key vagrant@192.168.56.11   # Web server 1
+ssh -i ~/.vagrant.d/insecure_private_key vagrant@192.168.56.12   # Web server 2
+ssh -i ~/.vagrant.d/insecure_private_key vagrant@192.168.56.13   # Database
+ssh -i ~/.vagrant.d/insecure_private_key vagrant@192.168.56.14   # Monitoring
 ```
 
-### **Key Security Rules**
+### **Development Environment Notes**
 ⚠️ **IMPORTANT**: 
 - Don't commit keys to version control (.gitignore protects them)
 - Don't share keys publicly
@@ -323,10 +324,9 @@ systemctl status grafana-server
 
 ### **If SSH Key Errors Occur**
 ```bash
-# Move to Linux filesystem
+# Move to Linux filesystem (if needed for file permissions)
 cp -r /mnt/windows-data/project ~/vagrant-secure
 cd ~/vagrant-secure
-chmod 600 ansible_key
 vagrant up
 ```
 
@@ -336,10 +336,10 @@ vagrant up
 
 **SSH Permission Errors**
 ```bash
-# Fix: Move to Linux filesystem
+# Fix: Move to Linux filesystem (if needed)
 cp -r project ~/vagrant-secure
 cd ~/vagrant-secure
-chmod 600 ansible_key
+# Default Vagrant keys are automatically managed
 ```
 
 **VM Name Conflicts**
@@ -352,7 +352,7 @@ vagrant destroy ID_FROM_ABOVE
 **Ansible Connection Failures**  
 ```bash
 # Test SSH manually
-ssh -i ansible_key vagrant@192.168.56.10
+ssh -i ~/.vagrant.d/insecure_private_key vagrant@192.168.56.10
 
 # Check VM network
 vagrant ssh lb -c "ip addr show"
@@ -374,9 +374,7 @@ vagrant up
 # Clean Ansible retry files
 find . -name "*.retry" -delete
 
-# Reset SSH keys
-rm ansible_key*
-ssh-keygen -t ed25519 -f ./ansible_key -N ""
+# Reset to clean state (uses default Vagrant keys automatically)
 vagrant destroy && vagrant up
 ```
 
