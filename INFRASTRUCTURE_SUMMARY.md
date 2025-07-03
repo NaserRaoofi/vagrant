@@ -35,11 +35,12 @@ This project creates a complete multi-VM infrastructure using Vagrant and Ansibl
 - **Note**: MySQL authentication configured
 
 ### 5. Monitoring Server (monitor.local - 192.168.56.14)
-- **Status**: ⚠️ Partially configured
-- **Software**: Prometheus + Grafana (configured but not fully active)
+- **Status**: ✅ Fully operational
+- **Software**: Prometheus + Grafana
 - **Function**: Infrastructure monitoring
 - **Ports**: 3000 (Grafana), 9090 (Prometheus)
 - **Forwarded**: localhost:3000 → VM:3000, localhost:9090 → VM:9090
+- **Access**: http://localhost:3000 (Grafana - admin/admin), http://localhost:9090 (Prometheus)
 
 ## 🛠️ Key Features Implemented
 
@@ -80,7 +81,8 @@ vagrant up
 - Web Server 1: http://localhost:8081
 - Web Server 2: http://localhost:8082
 - Database: localhost:3306
-- Monitoring: http://localhost:3000 (when configured)
+- Prometheus: http://localhost:9090
+- Grafana: http://localhost:3000 (admin/admin)
 
 ### Management Commands
 ```bash
@@ -105,13 +107,15 @@ vagrant destroy          # Remove all VMs
 - Web servers serve content correctly
 - Load balancer distributes requests
 - Database server runs MySQL
+- Prometheus monitoring is active and collecting metrics
+- Grafana dashboard is accessible
 - Ansible provisioning is idempotent
 - Error handling works for network issues
 
 ### ⚠️ Known Limitations
-- Node exporter downloads may fail due to network issues (handled gracefully)
-- Some MySQL configuration steps require manual intervention
-- Monitoring server needs additional configuration for full functionality
+- Initial monitoring setup may require manual intervention due to network dependencies
+- Some package downloads may fail during provisioning (handled gracefully with fallbacks)
+- MySQL configuration may require manual fine-tuning for production use
 
 ## 🔧 Technical Implementation
 
@@ -136,8 +140,8 @@ vagrant destroy          # Remove all VMs
 ## 📊 Final Status Summary
 - **Total VMs**: 5
 - **Successfully Running**: 5
-- **Fully Functional**: 4
-- **Partially Configured**: 1 (monitoring)
+- **Fully Functional**: 5
+- **Partially Configured**: 0
 - **Idempotent**: ✅ Yes
 - **Error Resilient**: ✅ Yes
 

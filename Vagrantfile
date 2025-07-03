@@ -15,7 +15,7 @@ Vagrant.configure("2") do |config|
     exit 1
   end
   
-  puts "✅ Ansible found: Using host-based control (professional architecture)"
+  puts "✅ Ansible found: Using host-based control"
   
   # Define the base box for all VMs
   config.vm.box = "ubuntu/jammy64"
