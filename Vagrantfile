@@ -136,11 +136,14 @@ Vagrant.configure("2") do |config|
     monitor.vm.network "forwarded_port", guest: 9090, host: 9090, auto_correct: true  # Prometheus
     
     # Run Ansible from HOST machine (proper architecture)
-    monitor.vm.provision "ansible" do |ansible|
+    # This runs after ALL VMs are up and provisions each VM with its role
+    monitor.vm.provision "ansible", run: "always" do |ansible|
       ansible.playbook = "ansible/site.yml"
       ansible.inventory_path = "ansible/inventory.ini"
       ansible.limit = "all"
       ansible.verbose = true
+      ansible.host_key_checking = false
+      ansible.raw_arguments = ["--timeout=300"]
       ansible.extra_vars = {
         ansible_ssh_private_key_file: File.expand_path("ansible_key", __dir__)
       }

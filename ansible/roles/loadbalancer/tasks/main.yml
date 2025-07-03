@@ -1,8 +1,27 @@
 ---
-- name: Install nginx
+# Check if nginx is already installed and configured
+- name: Check if nginx is installed
+  command: nginx -v
+  register: nginx_installed
+  failed_when: false
+  changed_when: false
+
+- name: Display nginx status
+  debug:
+    msg: "Nginx is {{ 'already installed' if nginx_installed.rc == 0 else 'not installed' }}"
+
+- name: Install nginx (only if not present)
   apt:
     name: nginx
     state: present
+    update_cache: true
+  when: nginx_installed.rc != 0
+
+- name: Ensure nginx is running and enabled
+  systemd:
+    name: nginx
+    state: started
+    enabled: true
 
 - name: Remove default nginx site
   file:

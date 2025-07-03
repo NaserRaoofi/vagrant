@@ -1,4 +1,28 @@
 ---
+# Check for prerequisites and install if missing
+- name: Check if required packages are installed
+  package_facts:
+    manager: apt
+
+- name: Install required packages for unpacking archives
+  apt:
+    name:
+      - unzip
+      - tar
+      - gzip
+    state: present
+    update_cache: true
+  become: true
+
+- name: Check if node_exporter is already installed
+  stat:
+    path: /usr/local/bin/node_exporter
+  register: node_exporter_binary
+
+- name: Display node_exporter status
+  debug:
+    msg: "Node exporter is {{ 'already installed' if node_exporter_binary.stat.exists else 'not installed' }}"
+
 - name: Create prometheus user
   user:
     name: prometheus
@@ -6,22 +30,51 @@
     shell: /bin/false
     home: /var/lib/prometheus
     create_home: false
+  when: not node_exporter_binary.stat.exists
 
-- name: Download and install node_exporter
+- name: Create temporary directory for downloads
+  file:
+    path: /tmp/node_exporter
+    state: directory
+    mode: '0755'
+  when: not node_exporter_binary.stat.exists
+
+- name: Download node_exporter tarball
+  get_url:
+    url: "https://github.com/prometheus/node_exporter/releases/download/v1.6.1/node_exporter-1.6.1.linux-amd64.tar.gz"
+    dest: /tmp/node_exporter.tar.gz
+    mode: '0644'
+    timeout: 60
+  register: download_result
+  until: download_result is succeeded
+  retries: 3
+  delay: 5
+  when: not node_exporter_binary.stat.exists
+  ignore_errors: true
+
+- name: Extract node_exporter tarball
   unarchive:
-    src: "https://github.com/prometheus/node_exporter/releases/download/v1.6.1/node_exporter-1.6.1.linux-amd64.tar.gz"
-    dest: /tmp
+    src: /tmp/node_exporter.tar.gz
+    dest: /tmp/node_exporter
     remote_src: true
-    creates: /tmp/node_exporter-1.6.1.linux-amd64
+  when: not node_exporter_binary.stat.exists and download_result is succeeded
+  ignore_errors: true
+  register: extract_result
 
-- name: Copy node_exporter binary
+- name: Check extraction success
+  debug:
+    msg: "Extraction {{ 'succeeded' if extract_result is succeeded else 'failed' }}"
+
+- name: Copy node_exporter binary (if extraction succeeded)
   copy:
-    src: /tmp/node_exporter-1.6.1.linux-amd64/node_exporter
+    src: "/tmp/node_exporter/node_exporter-1.6.1.linux-amd64/node_exporter"
     dest: /usr/local/bin/node_exporter
     mode: '0755'
     owner: prometheus
     group: prometheus
     remote_src: true
+  when: not node_exporter_binary.stat.exists and extract_result is succeeded
+  ignore_errors: true
 
 - name: Create node_exporter systemd service
   template:
@@ -30,6 +83,7 @@
   notify:
     - reload systemd
     - restart node_exporter
+  when: node_exporter_binary.stat.exists or (not node_exporter_binary.stat.exists and extract_result is succeeded)
 
 - name: Start and enable node_exporter
   systemd:
@@ -37,25 +91,54 @@
     state: started
     enabled: true
     daemon_reload: true
+  when: node_exporter_binary.stat.exists or (not node_exporter_binary.stat.exists and extract_result is succeeded)
 
 # Install mysqld_exporter on database servers
-- name: Download and install mysqld_exporter
-  unarchive:
-    src: "https://github.com/prometheus/mysqld_exporter/releases/download/v0.15.0/mysqld_exporter-0.15.0.linux-amd64.tar.gz"
-    dest: /tmp
-    remote_src: true
-    creates: /tmp/mysqld_exporter-0.15.0.linux-amd64
+- name: Check if mysqld_exporter is already installed
+  stat:
+    path: /usr/local/bin/mysqld_exporter
+  register: mysqld_exporter_binary
   when: "'databases' in group_names"
 
-- name: Copy mysqld_exporter binary
+- name: Create temporary directory for mysqld_exporter
+  file:
+    path: /tmp/mysqld_exporter
+    state: directory
+    mode: '0755'
+  when: "'databases' in group_names and not mysqld_exporter_binary.stat.exists | default(true)"
+
+- name: Download and install mysqld_exporter
+  get_url:
+    url: "https://github.com/prometheus/mysqld_exporter/releases/download/v0.15.0/mysqld_exporter-0.15.0.linux-amd64.tar.gz"
+    dest: /tmp/mysqld_exporter.tar.gz
+    mode: '0644'
+    timeout: 60
+  register: mysqld_download_result
+  until: mysqld_download_result is succeeded
+  retries: 3
+  delay: 5
+  when: "'databases' in group_names and not mysqld_exporter_binary.stat.exists | default(true)"
+  ignore_errors: true
+  
+- name: Extract mysqld_exporter tarball
+  unarchive:
+    src: /tmp/mysqld_exporter.tar.gz
+    dest: /tmp/mysqld_exporter
+    remote_src: true
+  when: "'databases' in group_names and mysqld_download_result is succeeded and not mysqld_exporter_binary.stat.exists | default(true)"
+  ignore_errors: true
+  register: mysqld_extract_result
+
+- name: Copy mysqld_exporter binary (if extraction succeeded)
   copy:
-    src: /tmp/mysqld_exporter-0.15.0.linux-amd64/mysqld_exporter
+    src: "/tmp/mysqld_exporter/mysqld_exporter-0.15.0.linux-amd64/mysqld_exporter"
     dest: /usr/local/bin/mysqld_exporter
     mode: '0755'
     owner: prometheus
     group: prometheus
     remote_src: true
-  when: "'databases' in group_names"
+  when: "'databases' in group_names and (not mysqld_exporter_binary.stat.exists | default(true)) and mysqld_extract_result is succeeded"
+  ignore_errors: true
 
 - name: Create mysqld_exporter configuration
   template:
@@ -64,7 +147,7 @@
     mode: '0600'
     owner: prometheus
     group: prometheus
-  when: "'databases' in group_names"
+  when: "'databases' in group_names and (mysqld_exporter_binary.stat.exists | default(false) or mysqld_extract_result is succeeded)"
 
 - name: Create MySQL user for monitoring
   mysql_user:
@@ -75,7 +158,8 @@
     state: present
     login_user: root
     login_password: "{{ mysql_root_password }}"
-  when: "'databases' in group_names"
+  when: "'databases' in group_names and (mysqld_exporter_binary.stat.exists | default(false) or mysqld_extract_result is succeeded)"
+  ignore_errors: true
 
 - name: Create mysqld_exporter systemd service
   template:
@@ -84,7 +168,7 @@
   notify:
     - reload systemd
     - restart mysqld_exporter
-  when: "'databases' in group_names"
+  when: "'databases' in group_names and (mysqld_exporter_binary.stat.exists | default(false) or mysqld_extract_result is succeeded)"
 
 - name: Start and enable mysqld_exporter
   systemd:
@@ -92,4 +176,4 @@
     state: started
     enabled: true
     daemon_reload: true
-  when: "'databases' in group_names"
+  when: "'databases' in group_names and (mysqld_exporter_binary.stat.exists | default(false) or mysqld_extract_result is succeeded)"

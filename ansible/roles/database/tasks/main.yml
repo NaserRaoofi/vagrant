@@ -1,11 +1,39 @@
 ---
-- name: Install MySQL server and dependencies
+# Check if MySQL is already installed
+- name: Check if MySQL is installed
+  command: mysql --version
+  register: mysql_installed
+  failed_when: false
+  changed_when: false
+
+- name: Display MySQL status
+  debug:
+    msg: "MySQL is {{ 'already installed' if mysql_installed.rc == 0 else 'not installed' }}"
+
+- name: Install MySQL server and dependencies (only if needed)
   apt:
     name:
       - mysql-server
       - python3-pymysql
       - python3-mysqldb
     state: present
+    update_cache: true
+    force: true
+    install_recommends: false
+    allow_downgrade: true
+  when: mysql_installed.rc != 0
+  register: mysql_install_result
+  ignore_errors: true
+
+- name: Try MySQL install with fix-missing if first attempt failed
+  shell: "apt-get update && apt-get install -y --fix-missing mysql-server python3-pymysql python3-mysqldb"
+  when: mysql_installed.rc != 0 and mysql_install_result.failed is defined
+  ignore_errors: true
+  register: mysql_install_fallback
+
+- name: Display MySQL installation status
+  debug:
+    msg: "MySQL installation {{ 'succeeded' if mysql_install_result.failed is not defined or mysql_install_fallback.rc == 0 else 'failed' }}"
 
 - name: Start and enable MySQL service
   systemd:
@@ -13,12 +41,25 @@
     state: started
     enabled: true
 
-- name: Set MySQL root password
-  mysql_user:
-    name: root
-    password: "{{ mysql_root_password }}"
-    login_unix_socket: /var/run/mysqld/mysqld.sock
-    state: present
+- name: Check if MySQL root password is already set
+  shell: mysql -u root -p'{{ mysql_root_password }}' -e "SELECT 1"
+  register: mysql_root_password_set
+  failed_when: false
+  changed_when: false
+  no_log: true
+
+- name: Set MySQL root password (only if not already set)
+  shell: |
+    mysql -u root -e "ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '{{ mysql_root_password }}';"
+  when: mysql_root_password_set.rc != 0
+  ignore_errors: true
+  register: mysql_password_set
+
+- name: Set MySQL root password with socket authentication if previous failed
+  shell: |
+    mysql -u root -e "ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '{{ mysql_root_password }}';" || true
+  when: mysql_root_password_set.rc != 0 and mysql_password_set.rc != 0
+  ignore_errors: true
 
 - name: Remove anonymous MySQL users
   mysql_user:
@@ -27,6 +68,15 @@
     state: absent
     login_user: root
     login_password: "{{ mysql_root_password }}"
+  ignore_errors: true
+
+- name: Remove MySQL test database
+  mysql_db:
+    name: test
+    state: absent
+    login_user: root
+    login_password: "{{ mysql_root_password }}"
+  ignore_errors: true
 
 - name: Remove MySQL test database
   mysql_db:

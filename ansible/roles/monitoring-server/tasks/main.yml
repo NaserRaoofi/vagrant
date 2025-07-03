@@ -1,5 +1,24 @@
 ---
-# Install Prometheus
+# Check if monitoring tools are already installed
+- name: Check if Prometheus is installed
+  command: /usr/local/bin/prometheus --version
+  register: prometheus_installed
+  failed_when: false
+  changed_when: false
+
+- name: Check if Grafana is installed
+  command: grafana-server -v
+  register: grafana_installed
+  failed_when: false
+  changed_when: false
+
+- name: Display monitoring tools status
+  debug:
+    msg: 
+      - "Prometheus is {{ 'already installed' if prometheus_installed.rc == 0 else 'not installed' }}"
+      - "Grafana is {{ 'already installed' if grafana_installed.rc == 0 else 'not installed' }}"
+
+# Install Prometheus (only if not already installed)
 - name: Create prometheus user and group
   user:
     name: prometheus
@@ -7,6 +26,7 @@
     shell: /bin/false
     home: /var/lib/prometheus
     create_home: true
+  when: prometheus_installed.rc != 0
 
 - name: Create prometheus directories
   file:
@@ -18,13 +38,15 @@
   loop:
     - /etc/prometheus
     - /var/lib/prometheus
+  when: prometheus_installed.rc != 0
 
-- name: Download and install Prometheus
+- name: Download and install Prometheus (only if needed)
   unarchive:
     src: "https://github.com/prometheus/prometheus/releases/download/v{{ prometheus_version }}/prometheus-{{ prometheus_version }}.linux-amd64.tar.gz"
     dest: /tmp
     remote_src: true
     creates: "/tmp/prometheus-{{ prometheus_version }}.linux-amd64"
+  when: prometheus_installed.rc != 0
 
 - name: Copy Prometheus binaries
   copy:

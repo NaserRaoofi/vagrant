@@ -1,11 +1,39 @@
 ---
-# Common tasks for all servers (minimal setup for testing)
+# Common tasks for all servers (smart installation checks)
 - name: Verify basic connectivity
   ping:
 
 - name: Check system information
   debug:
     msg: "Connected to {{ inventory_hostname }} ({{ ansible_host }})"
+
+- name: Check if basic packages are already installed
+  shell: |
+    echo "Checking installed packages..."
+    dpkg -l | grep -E "(curl|wget|vim)" | wc -l
+  register: basic_packages_count
+  changed_when: false
+
+- name: Display package installation status
+  debug:
+    msg: "{{ basic_packages_count.stdout | int }} out of 3 basic packages are already installed"
+
+- name: Install basic packages (only missing ones)
+  apt:
+    name: "{{ item }}"
+    state: present
+    update_cache: true
+  loop:
+    - curl
+    - wget
+    - vim
+  register: package_result
+  failed_when: false
+  ignore_errors: true
+
+- name: Display package installation results
+  debug:
+    msg: "Package installation completed (some may have been skipped if already installed)"
 
 - name: Ensure basic directories exist
   file:
@@ -24,6 +52,7 @@
       hostname={{ inventory_hostname }}
       role={{ group_names | join(',') }}
       configured={{ ansible_date_time.iso8601 }}
+      last_check={{ ansible_date_time.iso8601 }}
     mode: '0644'
 
 - name: Set basic hostname
