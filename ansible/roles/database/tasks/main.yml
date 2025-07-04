@@ -10,6 +10,22 @@
   debug:
     msg: "MySQL is {{ 'already installed' if mysql_installed.rc == 0 else 'not installed' }}"
 
+- name: Pre-configure MySQL for password authentication (before install)
+  debconf:
+    name: mysql-server
+    question: mysql-server/root_password
+    value: "{{ mysql_root_password }}"
+    vtype: password
+  when: mysql_installed.rc != 0
+
+- name: Pre-configure MySQL root password confirmation (before install)
+  debconf:
+    name: mysql-server
+    question: mysql-server/root_password_again
+    value: "{{ mysql_root_password }}"
+    vtype: password
+  when: mysql_installed.rc != 0
+
 - name: Install MySQL server and dependencies (only if needed)
   apt:
     name:
@@ -48,13 +64,23 @@
   changed_when: false
   no_log: true
 
-- name: Set MySQL root password (only if not already set)
+- name: Set MySQL root password using socket authentication (runs on fresh install)
   shell: |
-    mysql -u root -e "ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '{{ mysql_root_password }}';" || true
-    mysql -u root -e "FLUSH PRIVILEGES;" || true
+    # Use socket authentication to set password on fresh MySQL installs
+    sudo mysql -u root -e "ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '{{ mysql_root_password }}';"
+    sudo mysql -u root -e "FLUSH PRIVILEGES;"
   when: mysql_root_password_set.rc != 0
-  ignore_errors: true
   register: mysql_password_set
+  ignore_errors: true
+
+- name: Alternative MySQL root password setup (if socket method fails)
+  shell: |
+    # Try alternative approach for setting root password
+    sudo mysql -u root -e "UPDATE mysql.user SET plugin='mysql_native_password', authentication_string=PASSWORD('{{ mysql_root_password }}') WHERE user='root' AND host='localhost';"
+    sudo mysql -u root -e "FLUSH PRIVILEGES;"
+  when: mysql_root_password_set.rc != 0 and mysql_password_set is defined and mysql_password_set.rc != 0
+  register: mysql_password_alt
+  ignore_errors: true
 
 - name: Create MySQL root credentials file
   template:
@@ -65,12 +91,22 @@
     mode: '0600'
   notify: restart mysql
 
-- name: Set MySQL root password with socket authentication if previous failed
-  shell: |
-    mysql -u root -e "ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '{{ mysql_root_password }}';" || true
-    mysql -u root -e "FLUSH PRIVILEGES;" || true
-  when: mysql_root_password_set.rc != 0 and mysql_password_set.rc != 0
-  ignore_errors: true
+- name: Verify MySQL root password is working
+  shell: mysql -u root -p'{{ mysql_root_password }}' -e "SELECT 'Password authentication working' AS status;"
+  register: mysql_auth_test
+  failed_when: false
+  changed_when: false
+
+- name: Force MySQL restart if authentication is still failing
+  systemd:
+    name: mysql
+    state: restarted
+  when: mysql_auth_test.rc != 0
+
+- name: Final verification after restart
+  shell: mysql -u root -p'{{ mysql_root_password }}' -e "SELECT 'Final check - MySQL authentication working' AS status;"
+  register: mysql_final_test
+  when: mysql_auth_test.rc != 0
 
 - name: Remove anonymous MySQL users
   mysql_user:
@@ -117,7 +153,7 @@
     login_password: "{{ mysql_root_password }}"
   loop: "{{ mysql_users }}"
 
-- name: Create sample data
+- name: Create sample data table
   mysql_query:
     login_user: root
     login_password: "{{ mysql_root_password }}"
@@ -132,7 +168,13 @@
           INDEX idx_username (username),
           INDEX idx_email (email)
       );
-      
+
+- name: Insert sample data
+  mysql_query:
+    login_user: root
+    login_password: "{{ mysql_root_password }}"
+    login_db: testdb
+    query: |
       INSERT IGNORE INTO users (username, email) VALUES 
       ('admin', 'admin@example.com'),
       ('john_doe', 'john@example.com'),

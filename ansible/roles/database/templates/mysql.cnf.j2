@@ -12,14 +12,9 @@ port            = 3306
 # Performance settings
 max_connections = {{ mysql_max_connections }}
 innodb_buffer_pool_size = {{ mysql_innodb_buffer_pool_size }}
-innodb_log_file_size = 64M
+innodb_redo_log_capacity = 134217728
 innodb_log_buffer_size = 16M
 innodb_flush_log_at_trx_commit = 2
-
-# Query cache (if enabled)
-query_cache_type = 1
-query_cache_size = 32M
-query_cache_limit = 2M
 
 # Slow query log
 slow_query_log = 1
@@ -30,7 +25,7 @@ long_query_time = 2
 server-id = 1
 log-bin = mysql-bin
 binlog_format = ROW
-expire_logs_days = 7
+binlog_expire_logs_seconds = 604800  # 7 days in seconds
 
 # Security settings
 local-infile = 0
