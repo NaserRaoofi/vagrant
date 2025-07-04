@@ -2,20 +2,61 @@
 # vi: set ft=ruby :
 
 Vagrant.configure("2") do |config|
-  # Pre-flight check: Ensure Ansible is installed on host
-  unless system("which ansible > /dev/null 2>&1")
-    puts "\n❌ ERROR: Ansible is not installed on your local machine!"
-    puts "🔧 Please install Ansible first:"
-    puts "   Ubuntu/Debian: sudo apt update && sudo apt install ansible"
-    puts "   CentOS/RHEL:   sudo yum install ansible"
-    puts "   macOS:         brew install ansible"
-    puts "   pip:           pip install ansible"
-    puts "\n💡 This infrastructure uses HOST-BASED Ansible (industry standard)"
-    puts "   Your machine controls all VMs via SSH - no Ansible needed on VMs\n"
-    exit 1
-  end
+  # =============================================================================
+  # PRE-FLIGHT CHECKS - Only run during 'vagrant up'
+  # =============================================================================
   
-  puts "✅ Ansible found: Using host-based control"
+  # Trigger that runs ONLY during 'vagrant up' before any VMs start
+  config.trigger.before :up do |trigger|
+    trigger.name = "Pre-flight System Checks"
+    trigger.ruby do |env, machine|
+      puts "🔍 Checking for VirtualBox/KVM conflicts..."
+      
+      # Check for KVM modules
+      if system("lsmod | grep -q kvm")
+        puts "⚠️  KVM modules detected - this conflicts with VirtualBox"
+        puts "🔧 Automatically disabling KVM modules..."
+        
+        # Try to unload KVM modules
+        if system("sudo modprobe -r kvm_intel 2>/dev/null && sudo modprobe -r kvm 2>/dev/null")
+          puts "✅ KVM modules successfully disabled"
+          
+          # Verify they're actually removed
+          if system("lsmod | grep -q kvm")
+            puts "❌ KVM modules still detected after removal attempt"
+            puts "💡 Please reboot and try again, or manually run:"
+            puts "   sudo modprobe -r kvm_intel && sudo modprobe -r kvm"
+            exit 1
+          else
+            puts "✅ Confirmed: KVM modules are now disabled"
+          end
+        else
+          puts "❌ Failed to disable KVM modules automatically"
+          puts "💡 Please run manually before vagrant up:"
+          puts "   sudo modprobe -r kvm_intel && sudo modprobe -r kvm"
+          exit 1
+        end
+      else
+        puts "✅ No KVM conflicts detected - VirtualBox ready"
+      end
+
+      # Check for Ansible
+      unless system("which ansible > /dev/null 2>&1")
+        puts "\n❌ ERROR: Ansible is not installed on your local machine!"
+        puts "🔧 Please install Ansible first:"
+        puts "   Ubuntu/Debian: sudo apt update && sudo apt install ansible"
+        puts "   CentOS/RHEL:   sudo yum install ansible" 
+        puts "   macOS:         brew install ansible"
+        puts "   pip:           pip install ansible"
+        puts "\n💡 This infrastructure uses HOST-BASED Ansible (industry standard)"
+        exit 1
+      end
+      
+      puts "✅ Ansible found: Using host-based control"
+      puts "🚀 All pre-flight checks passed - starting VM infrastructure..."
+      puts "=" * 60
+    end
+  end
   
   # Define the base box for all VMs
   config.vm.box = "ubuntu/jammy64"

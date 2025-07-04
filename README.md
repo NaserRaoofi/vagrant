@@ -46,6 +46,40 @@ This project provides a complete **production-ready infrastructure** with 5 Ubun
 - **Ansible** installed on your machine
 - **Linux filesystem** (not Windows mount)
 
+### **⚡ Automatic KVM Conflict Resolution**
+
+**🎯 New Feature**: This project automatically detects and resolves VirtualBox/KVM conflicts!
+
+When you run `vagrant up`, the system will:
+
+1. **🔍 Auto-detect KVM conflicts**: Checks if KVM modules are loaded
+2. **🔧 Auto-disable KVM**: Automatically runs `sudo modprobe -r kvm_intel && sudo modprobe -r kvm`
+3. **✅ Verify resolution**: Confirms KVM modules are disabled
+4. **🚀 Continue startup**: Proceeds with VM creation
+
+#### **What you'll see:**
+```bash
+❯ vagrant up
+🔍 Checking for VirtualBox/KVM conflicts...
+⚠️  KVM modules detected - this conflicts with VirtualBox
+🔧 Automatically disabling KVM modules...
+✅ KVM modules successfully disabled
+✅ Confirmed: KVM modules are now disabled
+🚀 All pre-flight checks passed - starting VM infrastructure...
+```
+
+#### **Manual KVM management (if needed):**
+```bash
+# Check KVM status
+lsmod | grep kvm
+
+# Disable manually if auto-fix fails
+sudo modprobe -r kvm_intel && sudo modprobe -r kvm
+
+# Verify disabled
+lsmod | grep kvm  # Should return nothing
+```
+
 ### **Start Infrastructure**
 ```bash
 # Clone and start (includes automatic Ansible provisioning)

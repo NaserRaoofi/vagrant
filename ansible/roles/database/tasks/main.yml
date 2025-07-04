@@ -50,14 +50,25 @@
 
 - name: Set MySQL root password (only if not already set)
   shell: |
-    mysql -u root -e "ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '{{ mysql_root_password }}';"
+    mysql -u root -e "ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '{{ mysql_root_password }}';" || true
+    mysql -u root -e "FLUSH PRIVILEGES;" || true
   when: mysql_root_password_set.rc != 0
   ignore_errors: true
   register: mysql_password_set
 
+- name: Create MySQL root credentials file
+  template:
+    src: my.cnf.j2
+    dest: /root/.my.cnf
+    owner: root
+    group: root
+    mode: '0600'
+  notify: restart mysql
+
 - name: Set MySQL root password with socket authentication if previous failed
   shell: |
     mysql -u root -e "ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '{{ mysql_root_password }}';" || true
+    mysql -u root -e "FLUSH PRIVILEGES;" || true
   when: mysql_root_password_set.rc != 0 and mysql_password_set.rc != 0
   ignore_errors: true
 
@@ -77,13 +88,6 @@
     login_user: root
     login_password: "{{ mysql_root_password }}"
   ignore_errors: true
-
-- name: Remove MySQL test database
-  mysql_db:
-    name: test
-    state: absent
-    login_user: root
-    login_password: "{{ mysql_root_password }}"
 
 - name: Configure MySQL settings
   template:
