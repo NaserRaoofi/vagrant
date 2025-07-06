@@ -1,95 +1,121 @@
 ---
 # Check if monitoring tools are already installed
 - name: Check if Prometheus is installed (Ubuntu package)
-  command: prometheus --version
+  ansible.builtin.command: prometheus --version
   register: prometheus_installed
   failed_when: false
   changed_when: false
 
 - name: Check if Grafana is installed
-  command: grafana-server -v
+  ansible.builtin.command: grafana-server -v
   register: grafana_installed
   failed_when: false
   changed_when: false
 
 - name: Display monitoring tools status
-  debug:
+  ansible.builtin.debug:
     msg: 
       - "Prometheus is {{ 'already installed' if prometheus_installed.rc == 0 else 'not installed' }}"
       - "Grafana is {{ 'already installed' if grafana_installed.rc == 0 else 'not installed' }}"
 
-# Install Prometheus using Ubuntu packages (the method that works)
-- name: Update package cache
-  apt:
-    update_cache: true
+# Install Prometheus using Ubuntu packages
+- name: Update package cache (Prometheus)
+  ansible.builtin.apt:
+    update_cache: yes
   when: prometheus_installed.rc != 0
 
-- name: Install Prometheus from Ubuntu packages (reliable method)
-  apt:
+- name: Install Prometheus from Ubuntu packages
+  ansible.builtin.apt:
     name: prometheus
     state: present
-    install_recommends: false
+    install_recommends: no
   when: prometheus_installed.rc != 0
   register: prometheus_install_result
 
-- name: Start and enable Prometheus
-  systemd:
-    name: prometheus
-    state: started
-    enabled: true
-    daemon_reload: true
-  when: prometheus_installed.rc != 0 and prometheus_install_result is succeeded
-
-# Install Grafana using the method that works
+# Install Grafana
 - name: Install prerequisites for Grafana
-  apt:
+  ansible.builtin.apt:
     name:
       - software-properties-common
       - apt-transport-https
-      - ca-certificates
+      # - ca-certificates # Usually already present
       - curl
       - gnupg
     state: present
   when: grafana_installed.rc != 0
 
-- name: Add Grafana GPG key (manual method that works)
-  shell: curl -fsSL https://apt.grafana.com/gpg.key | apt-key add -
-  when: grafana_installed.rc != 0
-  ignore_errors: true
-
-- name: Add Grafana repository (manual method that works)
-  shell: echo 'deb https://apt.grafana.com stable main' > /etc/apt/sources.list.d/grafana.list
-  when: grafana_installed.rc != 0
-  ignore_errors: true
-
-- name: Update package cache for Grafana
-  apt:
-    update_cache: true
-  when: grafana_installed.rc != 0
-  ignore_errors: true
-
-- name: Install Grafana (the method that works)
-  apt:
-    name: grafana
+- name: Add Grafana GPG key
+  ansible.builtin.apt_key:
+    url: https://apt.grafana.com/gpg.key # Using official Grafana GPG key URL
     state: present
   when: grafana_installed.rc != 0
-  register: grafana_install_result
-  ignore_errors: true
 
-- name: Start and enable Grafana
-  systemd:
+- name: Add Grafana repository
+  ansible.builtin.apt_repository:
+    repo: 'deb https://apt.grafana.com stable main'
+    state: present
+    filename: grafana # Creates /etc/apt/sources.list.d/grafana.list
+  when: grafana_installed.rc != 0
+
+- name: Install Grafana
+  ansible.builtin.apt:
+    name: grafana
+    state: present
+    update_cache: yes # Update cache after adding new repo
+  when: grafana_installed.rc != 0
+  register: grafana_install_result
+
+# Configure Prometheus
+- name: Create Prometheus configuration directory
+  ansible.builtin.file:
+    path: /etc/prometheus
+    state: directory
+    owner: prometheus
+    group: prometheus
+    mode: '0755'
+
+- name: Template Prometheus configuration file
+  ansible.builtin.template:
+    src: prometheus.yml.j2
+    dest: /etc/prometheus/prometheus.yml
+    owner: prometheus
+    group: prometheus
+    mode: '0644'
+    validate: 'promtool check config %s' # Validate config before applying
+  notify: restart prometheus
+
+- name: Template Prometheus alert rules
+  ansible.builtin.template:
+    src: alert.rules.yml.j2
+    dest: "{{ prometheus_rules_path }}/alert.rules.yml" # Path from group_vars
+    owner: prometheus
+    group: prometheus
+    mode: '0644'
+    validate: 'promtool check rules %s' # Validate rules before applying
+  when: prometheus_alerting_enabled | default(false)
+  notify: reload prometheus
+
+# Start services
+- name: Ensure Prometheus service is started and enabled
+  ansible.builtin.systemd:
+    name: prometheus
+    state: started
+    enabled: true
+    daemon_reload: yes # In case unit file changed, or for first start
+
+- name: Ensure Grafana service is started and enabled
+  ansible.builtin.systemd:
     name: grafana-server
     state: started
     enabled: true
-    daemon_reload: true
-  when: grafana_installed.rc != 0 and grafana_install_result is succeeded
+    daemon_reload: yes
 
 - name: Display monitoring installation results
-  debug:
+  ansible.builtin.debug:
     msg:
-      - "Monitoring setup complete:"
-      - "Prometheus: {{ 'Running' if prometheus_installed.rc == 0 or (prometheus_install_result is defined and prometheus_install_result is succeeded) else 'Failed to install' }}"
-      - "Grafana: {{ 'Running' if grafana_installed.rc == 0 or (grafana_install_result is defined and grafana_install_result is succeeded) else 'Failed to install' }}"
+      - "Monitoring setup attempt finished:"
+      - "Prometheus: {{ 'Installed/Running' if prometheus_installed.rc == 0 or (prometheus_install_result is defined and prometheus_install_result.changed) else 'May have issues, check logs' }}"
+      - "Grafana: {{ 'Installed/Running' if grafana_installed.rc == 0 or (grafana_install_result is defined and grafana_install_result.changed) else 'May have issues, check logs' }}"
       - "Access URLs:"
       - "  - Prometheus: http://localhost:9090"
       - "  - Grafana: http://localhost:3000 (admin/admin)"

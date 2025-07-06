@@ -1,17 +1,44 @@
 ---
+# Recommendation for Service Dependencies:
+# For applications connecting to this database, ensure they wait for the database to be fully available
+# before starting. This can be achieved in their respective Ansible roles using tasks like:
+# - name: Wait for MySQL to be ready
+#   ansible.builtin.wait_for:
+#     host: "{{ db_host_ip_or_name }}" # IP/hostname of the DB server
+#     port: 3306
+#     delay: 10 # Seconds to wait before starting checks
+#     timeout: 300 # Seconds to wait before giving up
+#   delegate_to: "{{ app_server_hostname }}" # Run this on the app server
+
+# Recommendation for Error Handling:
+# For critical database operations (e.g., schema migrations, major configuration changes),
+# consider using 'block/rescue' to handle potential failures gracefully. Example:
+# - name: Critical DB Operation Block
+#   block:
+#     - name: Perform critical change
+#       ansible.builtin.command: /path/to/critical_script.sh
+#       register: critical_change_result
+#       changed_when: "'MODIFIED' in critical_change_result.stdout" # Example condition
+#   rescue:
+#     - name: Handle failure of critical change
+#       ansible.builtin.debug:
+#         msg: "Critical DB operation failed. Manual intervention may be required."
+#     # Add rollback or notification tasks here if applicable
+
 # Check if MySQL is already installed
 - name: Check if MySQL is installed
-  command: mysql --version
+  ansible.builtin.command: mysql --version # Simple check, could be enhanced with package_facts
   register: mysql_installed
   failed_when: false
   changed_when: false
 
 - name: Display MySQL status
-  debug:
+  ansible.builtin.debug:
     msg: "MySQL is {{ 'already installed' if mysql_installed.rc == 0 else 'not installed' }}"
 
+# Note: Using debconf for pre-seeding passwords is okay for automation but ensure mysql_root_password is from a secure source (Vault).
 - name: Pre-configure MySQL for password authentication (before install)
-  debconf:
+  ansible.builtin.debconf:
     name: mysql-server
     question: mysql-server/root_password
     value: "{{ mysql_root_password }}"
@@ -19,7 +46,7 @@
   when: mysql_installed.rc != 0
 
 - name: Pre-configure MySQL root password confirmation (before install)
-  debconf:
+  ansible.builtin.debconf:
     name: mysql-server
     question: mysql-server/root_password_again
     value: "{{ mysql_root_password }}"
@@ -27,137 +54,157 @@
   when: mysql_installed.rc != 0
 
 - name: Install MySQL server and dependencies (only if needed)
-  apt:
+  ansible.builtin.apt:
     name:
       - mysql-server
-      - python3-pymysql
-      - python3-mysqldb
+      - python3-pymysql # For Ansible's mysql_* modules
+      # - python3-mysqldb # python3-PyMySQL is generally preferred
     state: present
-    update_cache: true
-    force: true
-    install_recommends: false
-    allow_downgrade: true
-  when: mysql_installed.rc != 0
+    update_cache: yes
+    # force: true # Generally avoid force unless strictly necessary and understood.
+    install_recommends: no # Typically good for servers
+    # allow_downgrade: true # Avoid unless a specific downgrade scenario is intended.
+  when: mysql_installed.rc != 0 # or specific mysql packages not in ansible_facts.packages
   register: mysql_install_result
-  ignore_errors: true
+  ignore_errors: true # Temporary: allow playbook to continue for more robust password setting logic below
 
 - name: Try MySQL install with fix-missing if first attempt failed
-  shell: "apt-get update && apt-get install -y --fix-missing mysql-server python3-pymysql python3-mysqldb"
-  when: mysql_installed.rc != 0 and mysql_install_result.failed is defined
-  ignore_errors: true
+  ansible.builtin.shell: "apt-get update && apt-get install -y --fix-missing mysql-server python3-pymysql"
+  args:
+    warn: false # Suppress warnings about using shell for apt
+  when: mysql_installed.rc != 0 and mysql_install_result.failed is defined and mysql_install_result.failed
+  ignore_errors: true # If this also fails, subsequent tasks will likely fail but provides a chance.
   register: mysql_install_fallback
 
 - name: Display MySQL installation status
-  debug:
-    msg: "MySQL installation {{ 'succeeded' if mysql_install_result.failed is not defined or mysql_install_fallback.rc == 0 else 'failed' }}"
+  ansible.builtin.debug:
+    msg: "MySQL installation attempt finished. Check logs. Succeeded if mysql_install_result was successful or mysql_install_fallback.rc == 0."
 
 - name: Start and enable MySQL service
-  systemd:
-    name: mysql
+  ansible.builtin.systemd:
+    name: mysql # Or mysqld depending on the system/distro
     state: started
     enabled: true
 
-- name: Check if MySQL root password is already set
-  shell: mysql -u root -p'{{ mysql_root_password }}' -e "SELECT 1"
-  register: mysql_root_password_set
-  failed_when: false
-  changed_when: false
-  no_log: true
+# The following block attempts to set the root password robustly.
+# It's complex due to MySQL's changing default authentication methods.
+# Consider simplifying if possible for your specific MySQL version and base OS.
+- name: Manage MySQL root password
+  block:
+    - name: Check if MySQL root password is functional via TCP/IP
+      community.mysql.mysql_query:
+        login_user: root
+        login_password: "{{ mysql_root_password }}"
+        query: "SELECT 1"
+      register: mysql_tcp_auth_check
+      ignore_errors: true
+      no_log: true
 
-- name: Set MySQL root password using socket authentication (runs on fresh install)
-  shell: |
-    # Use socket authentication to set password on fresh MySQL installs
-    sudo mysql -u root -e "ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '{{ mysql_root_password }}';"
-    sudo mysql -u root -e "FLUSH PRIVILEGES;"
-  when: mysql_root_password_set.rc != 0
-  register: mysql_password_set
-  ignore_errors: true
+    - name: Attempt to set root password if TCP/IP login failed
+      when: mysql_tcp_auth_check.failed is defined and mysql_tcp_auth_check.failed
+      block:
+        - name: Set MySQL root password using mysql_native_password (common for MySQL 8+)
+          ansible.builtin.command: "mysql -u root -e \"ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '{{ mysql_root_password }}'; FLUSH PRIVILEGES;\""
+          args:
+            warn: false # mysql client interaction
+          register: set_pass_native
+          changed_when: set_pass_native.rc == 0
+          ignore_errors: true
+          no_log: true
 
-- name: Alternative MySQL root password setup (if socket method fails)
-  shell: |
-    # Try alternative approach for setting root password
-    sudo mysql -u root -e "UPDATE mysql.user SET plugin='mysql_native_password', authentication_string=PASSWORD('{{ mysql_root_password }}') WHERE user='root' AND host='localhost';"
-    sudo mysql -u root -e "FLUSH PRIVILEGES;"
-  when: mysql_root_password_set.rc != 0 and mysql_password_set is defined and mysql_password_set.rc != 0
-  register: mysql_password_alt
-  ignore_errors: true
+        - name: Set MySQL root password using caching_sha2_password (alternative for MySQL 8+)
+          ansible.builtin.command: "mysql -u root -e \"ALTER USER 'root'@'localhost' IDENTIFIED WITH caching_sha2_password BY '{{ mysql_root_password }}'; FLUSH PRIVILEGES;\""
+          args:
+            warn: false
+          when: set_pass_native.failed is defined and set_pass_native.failed
+          register: set_pass_caching_sha2
+          changed_when: set_pass_caching_sha2.rc == 0
+          ignore_errors: true
+          no_log: true
 
-- name: Create MySQL root credentials file
-  template:
+        - name: Restart MySQL to apply password changes if any were made
+          ansible.builtin.systemd:
+            name: mysql
+            state: restarted
+          when: (set_pass_native.changed or set_pass_caching_sha2.changed)
+
+        - name: Verify MySQL root password is working after attempts
+          community.mysql.mysql_query:
+            login_user: root
+            login_password: "{{ mysql_root_password }}"
+            query: "SELECT 'Password authentication working' AS status;"
+          register: mysql_auth_test_after_set
+          failed_when: false # Just register, don't fail playbook here
+          no_log: true
+
+        - name: Fail if password still not working after attempts
+          ansible.builtin.fail:
+            msg: "Failed to set and verify MySQL root password. Manual intervention required."
+          when: mysql_auth_test_after_set.failed is defined and mysql_auth_test_after_set.failed
+
+  rescue:
+    - ansible.builtin.debug:
+        msg: "An error occurred during MySQL root password management. Check logs."
+
+- name: Create MySQL root credentials file for client access
+  ansible.builtin.template:
     src: my.cnf.j2
     dest: /root/.my.cnf
     owner: root
     group: root
     mode: '0600'
-  notify: restart mysql
-
-- name: Verify MySQL root password is working
-  shell: mysql -u root -p'{{ mysql_root_password }}' -e "SELECT 'Password authentication working' AS status;"
-  register: mysql_auth_test
-  failed_when: false
-  changed_when: false
-
-- name: Force MySQL restart if authentication is still failing
-  systemd:
-    name: mysql
-    state: restarted
-  when: mysql_auth_test.rc != 0
-
-- name: Final verification after restart
-  shell: mysql -u root -p'{{ mysql_root_password }}' -e "SELECT 'Final check - MySQL authentication working' AS status;"
-  register: mysql_final_test
-  when: mysql_auth_test.rc != 0
+  # notify: restart mysql # Restarting mysql is not typically needed for .my.cnf changes unless it affects server behavior directly.
 
 - name: Remove anonymous MySQL users
-  mysql_user:
+  community.mysql.mysql_user:
     name: ""
     host_all: true
     state: absent
     login_user: root
     login_password: "{{ mysql_root_password }}"
-  ignore_errors: true
+  ignore_errors: true # Might fail if user doesn't exist, which is fine.
 
 - name: Remove MySQL test database
-  mysql_db:
+  community.mysql.mysql_db:
     name: test
     state: absent
     login_user: root
     login_password: "{{ mysql_root_password }}"
-  ignore_errors: true
+  ignore_errors: true # Might fail if DB doesn't exist.
 
-- name: Configure MySQL settings
-  template:
-    src: mysql.cnf.j2
-    dest: /etc/mysql/mysql.conf.d/mysqld.cnf
+- name: Configure MySQL server settings from template
+  ansible.builtin.template:
+    src: mysql.cnf.j2 # This should be mysqld.cnf.j2 or a specific server config template
+    dest: /etc/mysql/mysql.conf.d/mysqld.cnf # Standard path for server config
     backup: true
   notify: restart mysql
 
 - name: Create application databases
-  mysql_db:
+  community.mysql.mysql_db:
     name: "{{ item.name }}"
-    collation: "{{ item.collation | default('utf8_general_ci') }}"
-    encoding: "{{ item.encoding | default('utf8') }}"
+    collation: "{{ item.collation | default('utf8mb4_unicode_ci') }}" # Updated default collation
+    encoding: "{{ item.encoding | default('utf8mb4') }}" # Updated default encoding
     state: present
     login_user: root
     login_password: "{{ mysql_root_password }}"
   loop: "{{ mysql_databases }}"
 
 - name: Create application users
-  mysql_user:
+  community.mysql.mysql_user:
     name: "{{ item.name }}"
     password: "{{ item.password }}"
     priv: "{{ item.priv }}"
-    host: "{{ item.host | default('localhost') }}"
+    host: "{{ item.host | default('%') }}" # Changed default to '%' for broader app access if needed, review security.
     state: present
     login_user: root
     login_password: "{{ mysql_root_password }}"
   loop: "{{ mysql_users }}"
 
-- name: Create sample data table
-  mysql_query:
+- name: Create sample data table in testdb
+  community.mysql.mysql_query:
     login_user: root
     login_password: "{{ mysql_root_password }}"
-    login_db: testdb
+    login_db: testdb # Assuming 'testdb' is one of the mysql_databases
     query: |
       CREATE TABLE IF NOT EXISTS users (
           id INT AUTO_INCREMENT PRIMARY KEY,
@@ -167,10 +214,11 @@
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
           INDEX idx_username (username),
           INDEX idx_email (email)
-      );
+      ) ENGINE=InnoDB CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci; # Specify Engine and Charset
+  when: "'testdb' in (mysql_databases | map(attribute='name') | list)" # Ensure testdb is defined
 
-- name: Insert sample data
-  mysql_query:
+- name: Insert sample data into users table
+  community.mysql.mysql_query:
     login_user: root
     login_password: "{{ mysql_root_password }}"
     login_db: testdb
@@ -181,28 +229,32 @@
       ('jane_smith', 'jane@example.com'),
       ('demo_user', 'demo@example.com'),
       ('test_user', 'test@example.com');
+  when: "'testdb' in (mysql_databases | map(attribute='name') | list)"
 
 - name: Create backup directory
-  file:
+  ansible.builtin.file:
     path: "{{ mysql_backup_path }}"
     state: directory
     owner: mysql
     group: mysql
     mode: '0750'
-  when: mysql_backup_enabled
+  when: mysql_backup_enabled | default(false)
 
 - name: Create backup script
-  template:
+  ansible.builtin.template:
     src: mysql_backup.sh.j2
     dest: /usr/local/bin/mysql_backup.sh
     mode: '0755'
-  when: mysql_backup_enabled
+    owner: root
+    group: root
+  when: mysql_backup_enabled | default(false)
 
-- name: Schedule database backups
-  cron:
+- name: Schedule database backups via cron
+  ansible.builtin.cron:
     name: "MySQL backup"
     minute: "0"
     hour: "2"
     job: "/usr/local/bin/mysql_backup.sh"
     user: root
-  when: mysql_backup_enabled
+    cron_file: ansible_mysql_backup # Creates a specific cron file under /etc/cron.d/
+  when: mysql_backup_enabled | default(false)

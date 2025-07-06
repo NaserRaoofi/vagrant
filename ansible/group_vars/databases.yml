@@ -8,13 +8,55 @@ mysql_databases:
 
 mysql_users:
   - name: appuser
-    password: apppass123
-    priv: "testdb.*:ALL"
-    host: "%"
+    password: apppass123 # Use Ansible Vault for this in production!
+    priv: "testdb.*:ALL" # For least privilege, restrict to specific DML/DDL if app requirements are known (e.g., "testdb.table_name:SELECT,INSERT,UPDATE,DELETE")
+    host: "%" # Consider restricting to specific application server IPs instead of '%' if possible.
 
-mysql_bind_address: "0.0.0.0"
+# Security Recommendations for MySQL:
+# - Disable remote root login: Ensure root login is only allowed from localhost.
+#   The 'Remove anonymous MySQL users' task in roles/database/tasks/main.yml helps,
+#   but also verify root@'%' does not exist or is locked.
+#   Example task:
+#   - name: Ensure root login is restricted to localhost
+#     community.mysql.mysql_user:
+#       name: root
+#       host: '%'
+#       state: absent # or password_lock: yes if you want to keep the user but disable login
+#       login_user: root
+#       login_password: "{{ mysql_root_password }}"
+# - Use SSL/TLS for database connections: Configure MySQL and clients to use encrypted connections,
+#   especially if clients connect over untrusted networks. This involves generating SSL certs
+#   and configuring MySQL's my.cnf (e.g., ssl_ca, ssl_cert, ssl_key) and client connection parameters.
+# - Regularly update MySQL: Keep the MySQL server patched for security vulnerabilities.
+# - Firewall: Ensure only necessary ports (e.g., 3306) are open from trusted sources.
+
+mysql_bind_address: "0.0.0.0" # Listens on all interfaces. For better security, bind to a specific private IP if access is restricted.
+
+# Performance Tuning Recommendations:
+# The following are common parameters to consider for MySQL performance tuning.
+# Optimal values depend heavily on the specific workload, available RAM, and CPU resources.
+# - Use tools like MySQLTuner (mysqltuner.pl) or Percona Toolkit's pt-variable-advisor to get recommendations.
+# - Regularly analyze slow queries (enable slow_query_log).
+# - Ensure appropriate indexing for your application queries.
+
 mysql_max_connections: 100
+# Consider adjusting based on expected concurrent connections. Each connection consumes memory.
+
 mysql_innodb_buffer_pool_size: "256M"
+# This is CRITICAL for InnoDB performance.
+# Typically set to 50-70% of available RAM on a dedicated DB server.
+# For example, on a VM with 2GB RAM, "1G" or "1200M" might be a starting point after accounting for OS and other MySQL memory needs.
+# Ensure this value + other MySQL memory allocations + OS memory < Total System RAM.
+
+# mysql_query_cache_type: 0 # Query cache is deprecated in MySQL 5.7.20+ and removed in MySQL 8.0. Set to 0 or OFF.
+# mysql_query_cache_size: 0 # Correspondingly, set size to 0.
+
+# mysql_innodb_log_file_size: "48M" # Default is 48M. Larger can improve write performance but increases recovery time.
+# mysql_innodb_flush_log_at_trx_commit: 1 # 1 for full ACID compliance (slower), 2 for better performance but minor risk on OS crash (data committed but not flushed to disk). 0 is fastest but risks data loss on MySQL crash.
+# mysql_innodb_flush_method: O_DIRECT # Often recommended on Linux with hardware RAID controllers or SANs to avoid double buffering. Test carefully.
+
+# mysql_tmp_table_size: "16M"
+# mysql_max_heap_table_size: "16M" # Relates to memory for temporary tables. If complex queries create many on-disk temp tables, increasing these (and tmpdir configuration) can help.
 
 # Backup settings
 mysql_backup_enabled: true

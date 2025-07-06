@@ -4,8 +4,13 @@ global:
   external_labels:
     environment: 'vagrant-lab'
 
+# Rule files for alerting
+# These are loaded if prometheus_alerting_enabled is true in group_vars/monitoring.yml
+{% if prometheus_alerting_enabled | default(false) %}
 rule_files:
-  # Add alerting rules here in the future
+  - "{{ prometheus_rules_path }}/alert.rules.yml"
+  # - "another.rules.yml" # Add more rule files here if needed
+{% endif %}
 
 scrape_configs:
   - job_name: 'prometheus'

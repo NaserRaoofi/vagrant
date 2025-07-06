@@ -63,8 +63,15 @@ Vagrant.configure("2") do |config|
   config.vm.box_check_update = false
 
   # SSH configuration - using default Vagrant insecure keys
+  # For production or shared environments, it is strongly recommended to replace
+  # Vagrant's default insecure keypair with your own secure SSH keys.
+  # You can achieve this by setting:
+  #   config.ssh.insert_key = true (if you want Vagrant to generate a new pair per project)
+  #   or by managing authorized_keys explicitly, and setting:
+  #   config.ssh.private_key_path = "~/.ssh/your_private_key"
+  #   ansible.extra_vars = { ansible_ssh_private_key_file: "~/.ssh/your_private_key" }
   config.ssh.forward_agent = true
-  config.ssh.insert_key = false   # Use default Vagrant insecure key
+  config.ssh.insert_key = false   # Current: Use default Vagrant insecure key for lab simplicity
   config.ssh.keep_alive = true
   config.ssh.connect_timeout = 60
   config.ssh.shell = "bash -l"
@@ -149,7 +156,7 @@ Vagrant.configure("2") do |config|
   # Monitoring Server
   config.vm.define "monitor" do |monitor|
     monitor.vm.hostname = "monitor.local"
-    monitor.vm.network "private_network", ip: "192.168.56.14"
+    monitor.vm.network "private_network", ip: "192.168.56.15"
     monitor.vm.provider "virtualbox" do |vb|
       vb.name = "MonitoringServer"
       vb.memory = "2048"
@@ -184,7 +191,7 @@ Vagrant.configure("2") do |config|
 192.168.56.11   web1.local webserver1
 192.168.56.12   web2.local webserver2
 192.168.56.13   db.local database
-192.168.56.14   monitor.local monitoring
+192.168.56.15   monitor.local monitoring
 EOF
     echo "✅ Network configuration complete"
   SHELL

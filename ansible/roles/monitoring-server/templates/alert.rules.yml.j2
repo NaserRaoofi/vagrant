@@ -1,0 +1,69 @@
+groups:
+- name: HostHealthAlerts
+  rules:
+  - alert: InstanceDown
+    expr: up == 0
+    for: 1m
+    labels:
+      severity: critical
+    annotations:
+      summary: "Instance {{ $labels.instance }} down"
+      description: "{{ $labels.instance }} of job {{ $labels.job }} has been down for more than 1 minute."
+
+  - alert: HostHighCpuLoad
+    expr: 100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Host high CPU load on {{ $labels.instance }}"
+      description: "CPU load is > 80% on {{ $labels.instance }} for 5 minutes."
+
+  - alert: HostHighMemoryLoad
+    expr: (node_memory_MemTotal_bytes - (node_memory_MemFree_bytes + node_memory_Buffers_bytes + node_memory_Cached_bytes)) / node_memory_MemTotal_bytes * 100 > 85
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Host high memory load on {{ $labels.instance }}"
+      description: "Memory usage is > 85% on {{ $labels.instance }} for 5 minutes."
+
+  - alert: HostLowDiskSpace
+    expr: (node_filesystem_avail_bytes * 100) / node_filesystem_size_bytes < 15 and ON (instance, device, mountpoint) node_filesystem_readonly == 0
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Host low disk space on {{ $labels.instance }} (mountpoint {{ $labels.mountpoint }})"
+      description: "Disk space is < 15% on {{ $labels.instance }} for mountpoint {{ $labels.mountpoint }}."
+
+- name: ServiceSpecificAlerts
+  rules:
+  - alert: MySQLLowConnections
+    expr: mysql_global_status_threads_connected < 5
+    for: 2m
+    labels:
+      severity: warning
+    annotations:
+      summary: "MySQL connections low on {{ $labels.instance }}"
+      description: "MySQL instance {{ $labels.instance }} has less than 5 active connections."
+
+  # Add more service-specific alerts for Nginx, Apache, etc. as needed.
+  # Example for Nginx (requires nginx-prometheus-exporter with appropriate metrics):
+  # - alert: NginxHighHttp4xxRate
+  #   expr: sum(rate(nginx_http_requests_total{status=~"4.."}[5m])) by (instance) / sum(rate(nginx_http_requests_total[5m])) by (instance) * 100 > 5
+  #   for: 5m
+  #   labels:
+  #     severity: warning
+  #   annotations:
+  #     summary: "Nginx high HTTP 4xx rate on {{ $labels.instance }}"
+  #     description: "Nginx instance {{ $labels.instance }} is experiencing a high rate of HTTP 4xx errors (> 5%)."
+
+  # - alert: NginxHighHttp5xxRate
+  #   expr: sum(rate(nginx_http_requests_total{status=~"5.."}[5m])) by (instance) / sum(rate(nginx_http_requests_total[5m])) by (instance) * 100 > 2
+  #   for: 5m
+  #   labels:
+  #     severity: critical
+  #   annotations:
+  #     summary: "Nginx high HTTP 5xx rate on {{ $labels.instance }}"
+  #     description: "Nginx instance {{ $labels.instance }} is experiencing a high rate of HTTP 5xx errors (> 2%)."

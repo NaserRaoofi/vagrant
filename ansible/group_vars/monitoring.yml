@@ -13,7 +13,7 @@ prometheus_targets:
     - 192.168.56.11:9100  # web1
     - 192.168.56.12:9100  # web2
     - 192.168.56.13:9100  # db
-    - 192.168.56.14:9100  # monitor
+    - 192.168.56.15:9100  # monitor
   mysql_exporter:
     - 192.168.56.13:9104
   nginx_exporter:
@@ -23,6 +23,8 @@ prometheus_targets:
 prometheus_retention: "15d"
 prometheus_storage_path: /var/lib/prometheus
 
-# Alerting (for future expansion)
-alertmanager_enabled: false
-alert_rules_enabled: true
+# Alerting
+alertmanager_enabled: false # Set to true to configure and run Alertmanager
+prometheus_alerting_enabled: true # Set to true to load alert rules into Prometheus
+prometheus_rules_path: "/etc/prometheus/rules" # Directory where alert rules files are stored
+# alert_rules_enabled: true # This seems redundant if prometheus_alerting_enabled is used

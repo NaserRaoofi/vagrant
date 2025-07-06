@@ -1,71 +1,80 @@
 ---
+# tasks file for ansible/roles/loadbalancer
+#
+# Recommendation for High Availability:
+# This role sets up a single Nginx load balancer, which can be a single point of failure (SPOF).
+# For production environments, consider implementing High Availability (HA) using tools like:
+# - Keepalived with VRRP: To provide a virtual IP address that can float between multiple load balancer instances.
+# - HAProxy: Can be used in conjunction with Keepalived or other clustering solutions.
+# - Cloud provider load balancers: If deploying in a cloud environment, utilize their managed load balancing services.
+#
 # Check if nginx is already installed and configured
 - name: Check if nginx is installed
-  command: nginx -v
+  ansible.builtin.command: nginx -v
   register: nginx_installed
   failed_when: false
   changed_when: false
 
 - name: Display nginx status
-  debug:
+  ansible.builtin.debug:
     msg: "Nginx is {{ 'already installed' if nginx_installed.rc == 0 else 'not installed' }}"
 
 - name: Install nginx (only if not present)
-  apt:
+  ansible.builtin.apt:
     name: nginx
     state: present
-    update_cache: true
+    update_cache: yes
   when: nginx_installed.rc != 0
 
 - name: Ensure nginx is running and enabled
-  systemd:
+  ansible.builtin.systemd:
     name: nginx
     state: started
     enabled: true
 
 - name: Remove default nginx site
-  file:
+  ansible.builtin.file:
     path: /etc/nginx/sites-enabled/default
     state: absent
   notify: restart nginx
 
 - name: Configure nginx main settings
-  template:
+  ansible.builtin.template:
     src: nginx.conf.j2
     dest: /etc/nginx/nginx.conf
     backup: true
   notify: restart nginx
 
 - name: Create load balancer configuration
-  template:
+  ansible.builtin.template:
     src: loadbalancer.conf.j2
     dest: /etc/nginx/sites-available/loadbalancer
     backup: true
   notify: restart nginx
 
 - name: Enable load balancer site
-  file:
+  ansible.builtin.file:
     src: /etc/nginx/sites-available/loadbalancer
     dest: /etc/nginx/sites-enabled/loadbalancer
     state: link
   notify: restart nginx
 
 - name: Create nginx log directory
-  file:
+  ansible.builtin.file:
     path: /var/log/nginx
     state: directory
-    owner: www-data
-    group: adm
+    owner: www-data # Standard Nginx user on Debian/Ubuntu
+    group: adm      # Standard group for logs on Debian/Ubuntu
     mode: '0755'
 
 - name: Test nginx configuration
-  command: nginx -t
+  ansible.builtin.command: nginx -t
   register: nginx_test
-  changed_when: false
+  changed_when: false # This command does not change state
   failed_when: nginx_test.rc != 0
 
-- name: Start and enable nginx
-  systemd:
+- name: Ensure nginx service is started and enabled (final check)
+  ansible.builtin.systemd:
     name: nginx
     state: started
     enabled: true

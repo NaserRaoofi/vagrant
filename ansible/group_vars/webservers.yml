@@ -21,8 +21,10 @@ apache_modules:
   - headers
   - ssl
   - expires
+  - deflate # Added for mod_deflate configuration in vhost
 
 # PHP settings
+php_version: "8.1" # Define the PHP version used in paths
 php_memory_limit: "256M"
 php_max_execution_time: 300
 php_upload_max_filesize: "10M"

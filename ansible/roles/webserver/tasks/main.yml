@@ -1,53 +1,54 @@
 ---
-# Check if web server packages are already installed
-- name: Check if Apache is installed
-  command: apache2 -v
-  register: apache_installed
-  failed_when: false
-  changed_when: false
+- name: Gather installed packages facts
+  ansible.builtin.package_facts:
+    manager: auto
 
-- name: Check if PHP is installed
-  command: php -v
-  register: php_installed
-  failed_when: false
-  changed_when: false
+- name: Determine if web server packages need installation
+  ansible.builtin.set_fact:
+    install_apache: "{{ 'apache2' not in ansible_facts.packages }}"
+    install_php: "{{ 'php' not in ansible_facts.packages }}" # This is a basic check, specific PHP packages are in web_packages
 
-- name: Display web server status
-  debug:
-    msg: 
-      - "Apache is {{ 'already installed' if apache_installed.rc == 0 else 'not installed' }}"
-      - "PHP is {{ 'already installed' if php_installed.rc == 0 else 'not installed' }}"
+- name: Display web server package status
+  ansible.builtin.debug:
+    msg:
+      - "Apache installation required: {{ install_apache }}"
+      - "PHP core installation required (or first run): {{ install_php }}" # More specific PHP packages handled by apt below
 
-- name: Install web server packages (only if needed)
-  apt:
-    name: "{{ web_packages }}"
+- name: Install web server packages (if any are missing)
+  ansible.builtin.apt:
+    name: "{{ web_packages }}" # This list includes apache2, php, and php modules
     state: present
-    update_cache: true
-  when: apache_installed.rc != 0 or php_installed.rc != 0
+    update_cache: yes
+  when: install_apache or install_php # If either main component is missing, run apt for all web_packages
+                                     # apt module itself is idempotent for individual packages.
 
 - name: Ensure Apache is running and enabled
-  systemd:
+  ansible.builtin.systemd:
     name: apache2
     state: started
     enabled: true
 
 - name: Enable Apache modules
-  apache2_module:
+  community.general.apache2_module:
     name: "{{ item }}"
     state: present
   loop: "{{ apache_modules }}"
+  # Enabling some Apache modules might fail if they are not installed or have dependencies.
+  # For a generic webserver role, it's often better to attempt to enable all desired modules
+  # and log failures rather than halting the entire playbook.
+  # The notify will restart apache regardless, which might resolve some issues or at least apply successfully enabled modules.
   ignore_errors: true
   register: apache_modules_result
   notify: restart apache
 
 - name: Check if any module failed to enable
-  debug:
-    msg: "Some modules may not have been enabled. Apache will be restarted."
-  when: apache_modules_result.failed is defined
+  ansible.builtin.debug:
+    msg: "Warning: Enabling some Apache modules may have failed. Check task 'Enable Apache modules' above. Apache will be restarted."
+  when: apache_modules_result.failed is defined and apache_modules_result.results | selectattr('failed', 'defined') | selectattr('failed') | list | length > 0
 
 - name: Configure PHP settings
-  lineinfile:
-    path: /etc/php/8.1/apache2/php.ini
+  ansible.builtin.lineinfile:
+    path: "/etc/php/{{ php_version }}/apache2/php.ini" # Made PHP version a variable
     regexp: "{{ item.regexp }}"
     line: "{{ item.line }}"
     backup: true
@@ -56,9 +57,11 @@
     - { regexp: '^max_execution_time', line: 'max_execution_time = {{ php_max_execution_time }}' }
     - { regexp: '^upload_max_filesize', line: 'upload_max_filesize = {{ php_upload_max_filesize }}' }
   notify: restart apache
+  vars:
+    php_version: "8.1" # Default PHP version, can be overridden in group_vars
 
 - name: Create web application
-  template:
+  ansible.builtin.template:
     src: index.php.j2
     dest: "{{ web_document_root }}/index.php"
     owner: www-data
@@ -66,35 +69,35 @@
     mode: '0644'
 
 - name: Create server identification file
-  copy:
-    content: "{{ server_id | default('UNKNOWN') }}"
+  ansible.builtin.copy:
+    content: "{{ server_id | default(inventory_hostname) }}" # Changed default to inventory_hostname
     dest: "{{ web_document_root }}/server_id.txt"
     owner: www-data
     group: www-data
     mode: '0644'
 
 - name: Remove default Apache index
-  file:
+  ansible.builtin.file:
     path: "{{ web_document_root }}/index.html"
     state: absent
 
 - name: Configure Apache virtual host
-  template:
+  ansible.builtin.template:
     src: vhost.conf.j2
     dest: /etc/apache2/sites-available/000-default.conf
     backup: true
   notify: restart apache
 
 - name: Set proper permissions for web directory
-  file:
+  ansible.builtin.file:
     path: "{{ web_document_root }}"
     owner: www-data
     group: www-data
     mode: '0755'
     recurse: true
 
-- name: Start and enable Apache
-  systemd:
+- name: Ensure Apache service is started and enabled (final check)
+  ansible.builtin.systemd: # Ensures the service is running, even if previously stopped by a handler bug or manual intervention
     name: "{{ web_service_name }}"
     state: started
     enabled: true

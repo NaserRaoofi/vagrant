@@ -34,7 +34,7 @@ This project creates a complete multi-VM infrastructure using Vagrant and Ansibl
 - **Forwarded**: localhost:3306 → VM:3306
 - **Note**: MySQL authentication configured
 
-### 5. Monitoring Server (monitor.local - 192.168.56.14)
+### 5. Monitoring Server (monitor.local - 192.168.56.15)
 - **Status**: ✅ Fully operational
 - **Software**: Prometheus + Grafana
 - **Function**: Infrastructure monitoring

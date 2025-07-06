@@ -1,42 +1,37 @@
 ---
 # Common tasks for all servers (smart installation checks)
 - name: Verify basic connectivity
-  ping:
+  ansible.builtin.ping:
 
 - name: Check system information
-  debug:
+  ansible.builtin.debug:
     msg: "Connected to {{ inventory_hostname }} ({{ ansible_host }})"
 
-- name: Check if basic packages are already installed
-  shell: |
-    echo "Checking installed packages..."
-    dpkg -l | grep -E "(curl|wget|vim)" | wc -l
-  register: basic_packages_count
-  changed_when: false
-
-- name: Display package installation status
-  debug:
-    msg: "{{ basic_packages_count.stdout | int }} out of 3 basic packages are already installed"
-
-- name: Install basic packages (only missing ones)
-  apt:
+# The apt module is inherently idempotent.
+# It will only install packages if they are not already present or are not the specified version.
+# No need for pre-checks with shell commands.
+- name: Install basic utility packages
+  ansible.builtin.apt:
     name: "{{ item }}"
     state: present
-    update_cache: true
+    update_cache: yes # Run apt-get update before installing packages.
   loop:
     - curl
     - wget
     - vim
-  register: package_result
-  failed_when: false
+  register: basic_packages_installation_result
+  # This is acceptable here as some packages might not be available on all minimal systems,
+  # or there might be temporary network issues for a specific package.
+  # The core functionality of the role is not strictly dependent on every single one of these.
   ignore_errors: true
 
-- name: Display package installation results
-  debug:
-    msg: "Package installation completed (some may have been skipped if already installed)"
+- name: Display basic package installation results
+  ansible.builtin.debug:
+    msg: "Basic package installation attempt finished. Check results above. Skipped if already installed. Errors ignored for missing packages."
+    # var: basic_packages_installation_result # Optionally uncomment to see detailed results
 
 - name: Ensure basic directories exist
-  file:
+  ansible.builtin.file:
     path: "{{ item }}"
     state: directory
     mode: '0755'
@@ -45,7 +40,7 @@
     - /var/log/app
 
 - name: Create basic system info file
-  copy:
+  ansible.builtin.copy:
     dest: /etc/system-role
     content: |
       # System role configured by Ansible
@@ -56,28 +51,30 @@
     mode: '0644'
 
 - name: Set basic hostname
-  hostname:
+  ansible.builtin.hostname:
     name: "{{ inventory_hostname.split('.')[0] }}"
+  # Hostname changes can sometimes fail due to system specifics or permissions,
+  # but it's not critical enough to halt the entire provisioning for this lab environment.
   ignore_errors: true
 
 - name: Set timezone
-  timezone:
+  community.general.timezone:
     name: "{{ timezone }}"
 
 - name: Configure DNS
-  template:
+  ansible.builtin.template:
     src: resolv.conf.j2
     dest: /etc/resolv.conf
     backup: true
   notify: restart networking
 
 - name: Create application group
-  group:
+  ansible.builtin.group:
     name: appgroup
     state: present
 
 - name: Create application user
-  user:
+  ansible.builtin.user:
     name: appuser
     group: appgroup
     shell: /bin/bash
@@ -85,7 +82,7 @@
     state: present
 
 - name: Configure SSH security (disable password auth)
-  lineinfile:
+  ansible.builtin.lineinfile:
     path: /etc/ssh/sshd_config
     regexp: '^#?PasswordAuthentication'
     line: 'PasswordAuthentication no'
@@ -93,14 +90,17 @@
   notify: restart ssh
 
 - name: Ensure firewall is disabled (lab environment)
-  systemd:
+  ansible.builtin.systemd:
     name: ufw
     state: stopped
     enabled: false
+  # This is for a lab/dev environment. In production, firewall should be managed and enabled.
+  # Ignoring errors here because ufw might not be installed on all base images,
+  # and the goal is to ensure it's not blocking, not to manage its installation here.
   ignore_errors: true
 
 - name: Create log directory
-  file:
+  ansible.builtin.file:
     path: /var/log/ansible
     state: directory
     mode: '0755'
